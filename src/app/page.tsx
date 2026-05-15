@@ -1,65 +1,163 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import Image from 'next/image';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { CheckSquare, Calendar, Clock, Wallet } from 'lucide-react';
+
+const WEDDING_DATE = new Date('2026-10-10T15:00:00+05:30');
+
+function getCountdown() {
+  const now = new Date();
+  const diff = WEDDING_DATE.getTime() - now.getTime();
+  if (diff <= 0) return { days: 0, hours: 0, minutes: 0, seconds: 0 };
+  return {
+    days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+    hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+    minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
+    seconds: Math.floor((diff % (1000 * 60)) / 1000),
+  };
+}
+
+function formatLKR(amount: number) {
+  return 'Rs. ' + amount.toLocaleString('en-LK', { minimumFractionDigits: 2 });
+}
+
+export default function Dashboard() {
+  const [countdown, setCountdown] = useState(getCountdown());
+  const [stats, setStats] = useState({
+    totalTasks: 0,
+    doneTasks: 0,
+    totalBudget: 0,
+    totalPaid: 0,
+    milestonesTotal: 0,
+    milestonesDone: 0,
+  });
+
+  useEffect(() => {
+    const timer = setInterval(() => setCountdown(getCountdown()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    async function fetchStats() {
+      const [tasks, budget, milestones] = await Promise.all([
+        supabase.from('tasks').select('status'),
+        supabase.from('budget_items').select('total_expense, advance_paid, status'),
+        supabase.from('timeline_milestones').select('is_completed'),
+      ]);
+
+      const taskData = tasks.data || [];
+      const budgetData = budget.data || [];
+      const milestoneData = milestones.data || [];
+
+      setStats({
+        totalTasks: taskData.length,
+        doneTasks: taskData.filter((t) => t.status === 'done').length,
+        totalBudget: budgetData.reduce((sum, b) => sum + Number(b.total_expense), 0),
+        totalPaid: budgetData.reduce((sum, b) => {
+          if (b.status === 'settled') return sum + Number(b.total_expense);
+          return sum + Number(b.advance_paid);
+        }, 0),
+        milestonesTotal: milestoneData.length,
+        milestonesDone: milestoneData.filter((m) => m.is_completed).length,
+      });
+    }
+    fetchStats();
+  }, []);
+
+  const taskPercent = stats.totalTasks > 0 ? Math.round((stats.doneTasks / stats.totalTasks) * 100) : 0;
+  const milestonePercent = stats.milestonesTotal > 0 ? Math.round((stats.milestonesDone / stats.milestonesTotal) * 100) : 0;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
+    <div className="max-w-5xl mx-auto px-4 py-8">
+      <div className="text-center mb-10">
         <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
+          src="/logo.png"
+          alt="Amaya & Shavin"
+          width={140}
+          height={140}
+          className="mx-auto mb-4"
           priority
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+        <h1 className="text-4xl sm:text-5xl font-bold text-gold mb-1">Amaya & Shavin</h1>
+        <p className="text-warm-gray-light text-lg italic">Forever & Always</p>
+        <p className="text-warm-gray mt-2 text-sm">
+          10th October 2026 &middot; St. Sebastians Church, Moratuwa
+        </p>
+      </div>
+
+      {/* Countdown */}
+      <div className="card mb-8">
+        <h2 className="text-center text-2xl font-semibold text-gold mb-5">Counting Down</h2>
+        <div className="grid grid-cols-4 gap-4 max-w-md mx-auto">
+          {[
+            { value: countdown.days, label: 'Days' },
+            { value: countdown.hours, label: 'Hours' },
+            { value: countdown.minutes, label: 'Minutes' },
+            { value: countdown.seconds, label: 'Seconds' },
+          ].map((item) => (
+            <div key={item.label} className="text-center">
+              <div className="text-3xl sm:text-4xl font-bold text-gold">{item.value}</div>
+              <div className="text-xs text-warm-gray-light mt-1 uppercase tracking-wider">{item.label}</div>
+            </div>
+          ))}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <Link href="/tasks" className="card hover:shadow-md transition-shadow group">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-2 bg-gold/10 rounded-lg">
+              <CheckSquare size={20} className="text-gold" />
+            </div>
+            <h3 className="text-sm font-medium text-warm-gray">Tasks</h3>
+          </div>
+          <p className="text-2xl font-bold text-gold">{stats.doneTasks}/{stats.totalTasks}</p>
+          <div className="mt-2 h-2 bg-ivory-dark rounded-full overflow-hidden">
+            <div className="h-full bg-gold rounded-full transition-all" style={{ width: `${taskPercent}%` }} />
+          </div>
+          <p className="text-xs text-warm-gray-light mt-1">{taskPercent}% complete</p>
+        </Link>
+
+        <Link href="/timeline" className="card hover:shadow-md transition-shadow group">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-2 bg-gold/10 rounded-lg">
+              <Calendar size={20} className="text-gold" />
+            </div>
+            <h3 className="text-sm font-medium text-warm-gray">Milestones</h3>
+          </div>
+          <p className="text-2xl font-bold text-gold">{stats.milestonesDone}/{stats.milestonesTotal}</p>
+          <div className="mt-2 h-2 bg-ivory-dark rounded-full overflow-hidden">
+            <div className="h-full bg-sage rounded-full transition-all" style={{ width: `${milestonePercent}%` }} />
+          </div>
+          <p className="text-xs text-warm-gray-light mt-1">{milestonePercent}% complete</p>
+        </Link>
+
+        <Link href="/budget" className="card hover:shadow-md transition-shadow group">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-2 bg-gold/10 rounded-lg">
+              <Wallet size={20} className="text-gold" />
+            </div>
+            <h3 className="text-sm font-medium text-warm-gray">Budget Spent</h3>
+          </div>
+          <p className="text-2xl font-bold text-gold">{formatLKR(stats.totalPaid)}</p>
+          <p className="text-xs text-warm-gray-light mt-2">of {formatLKR(stats.totalBudget)} total</p>
+        </Link>
+
+        <Link href="/schedule" className="card hover:shadow-md transition-shadow group">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-2 bg-gold/10 rounded-lg">
+              <Clock size={20} className="text-gold" />
+            </div>
+            <h3 className="text-sm font-medium text-warm-gray">Wedding Day</h3>
+          </div>
+          <p className="text-lg font-semibold text-gold mt-1">3:00 PM</p>
+          <p className="text-xs text-warm-gray-light mt-2">St. Sebastians Church</p>
+        </Link>
+      </div>
     </div>
   );
 }
