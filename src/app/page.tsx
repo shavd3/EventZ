@@ -25,7 +25,8 @@ function formatLKR(amount: number) {
 }
 
 export default function Dashboard() {
-  const [countdown, setCountdown] = useState(getCountdown());
+  const [mounted, setMounted] = useState(false);
+  const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [stats, setStats] = useState({
     totalTasks: 0,
     doneTasks: 0,
@@ -36,21 +37,22 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
+    setMounted(true);
+    setCountdown(getCountdown());
     const timer = setInterval(() => setCountdown(getCountdown()), 1000);
     return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
     async function fetchStats() {
-      const [tasks, budget, milestones] = await Promise.all([
-        supabase.from('tasks').select('status'),
+      const [tasks, budget] = await Promise.all([
+        supabase.from('tasks').select('status, due_date'),
         supabase.from('budget_items').select('total_expense, advance_paid, status'),
-        supabase.from('timeline_milestones').select('is_completed'),
       ]);
 
       const taskData = tasks.data || [];
       const budgetData = budget.data || [];
-      const milestoneData = milestones.data || [];
+      const withDueDate = taskData.filter((t) => t.due_date);
 
       setStats({
         totalTasks: taskData.length,
@@ -60,8 +62,8 @@ export default function Dashboard() {
           if (b.status === 'settled') return sum + Number(b.total_expense);
           return sum + Number(b.advance_paid);
         }, 0),
-        milestonesTotal: milestoneData.length,
-        milestonesDone: milestoneData.filter((m) => m.is_completed).length,
+        milestonesTotal: withDueDate.length,
+        milestonesDone: withDueDate.filter((t) => t.status === 'done').length,
       });
     }
     fetchStats();
@@ -76,9 +78,10 @@ export default function Dashboard() {
         <Image
           src="/logo.png"
           alt="Amaya & Shavin"
-          width={140}
-          height={140}
+          width={160}
+          height={160}
           className="mx-auto mb-4"
+          style={{ mixBlendMode: 'multiply' }}
           priority
         />
         <h1 className="text-4xl sm:text-5xl font-bold text-gold mb-1">Amaya & Shavin</h1>
@@ -99,7 +102,7 @@ export default function Dashboard() {
             { value: countdown.seconds, label: 'Seconds' },
           ].map((item) => (
             <div key={item.label} className="text-center">
-              <div className="text-3xl sm:text-4xl font-bold text-gold">{item.value}</div>
+              <div className="text-3xl sm:text-4xl font-bold text-gold">{mounted ? item.value : '-'}</div>
               <div className="text-xs text-warm-gray-light mt-1 uppercase tracking-wider">{item.label}</div>
             </div>
           ))}
@@ -127,7 +130,7 @@ export default function Dashboard() {
             <div className="p-2 bg-gold/10 rounded-lg">
               <Calendar size={20} className="text-gold" />
             </div>
-            <h3 className="text-sm font-medium text-warm-gray">Milestones</h3>
+            <h3 className="text-sm font-medium text-warm-gray">Timeline</h3>
           </div>
           <p className="text-2xl font-bold text-gold">{stats.milestonesDone}/{stats.milestonesTotal}</p>
           <div className="mt-2 h-2 bg-ivory-dark rounded-full overflow-hidden">

@@ -12,6 +12,7 @@ const navLinks = [
   { href: '/timeline', label: 'Timeline' },
   { href: '/schedule', label: 'Wedding Day' },
   { href: '/budget', label: 'Budget' },
+  { href: '/settings', label: 'Categories' },
 ];
 
 export default function Navbar() {
@@ -23,7 +24,7 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between h-16">
           <Link href="/" className="flex items-center gap-3">
-            <Image src="/logo.png" alt="A&S" width={40} height={40} className="rounded-full" />
+            <Image src="/logo.png" alt="A&S" width={40} height={40} className="rounded-full" style={{ mixBlendMode: 'multiply' }} />
             <span className="text-xl font-semibold text-gold" style={{ fontFamily: 'var(--font-sans)' }}>
               A & S
             </span>

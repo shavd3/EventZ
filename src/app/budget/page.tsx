@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { BudgetItem, BUDGET_CATEGORIES } from '@/lib/types';
+import { BudgetItem } from '@/lib/types';
 import { Plus, Trash2, Edit2, X } from 'lucide-react';
+import Dropdown from '@/components/Dropdown';
 
 function formatLKR(amount: number) {
   return 'Rs. ' + amount.toLocaleString('en-LK', { minimumFractionDigits: 2 });
@@ -24,7 +25,7 @@ type BudgetForm = {
 };
 
 const emptyForm: BudgetForm = {
-  category: BUDGET_CATEGORIES[0],
+  category: '',
   vendor: '',
   contact: '',
   total_expense: '',
@@ -39,11 +40,22 @@ const emptyForm: BudgetForm = {
 
 export default function BudgetPage() {
   const [items, setItems] = useState<BudgetItem[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(true);
   const [filterSide, setFilterSide] = useState<'all' | 'bride' | 'groom'>('all');
+
+  async function fetchCategories() {
+    const { data } = await supabase
+      .from('categories')
+      .select('name')
+      .order('sort_order', { ascending: true });
+    const names = (data || []).map((c) => c.name);
+    setCategories(names);
+    return names;
+  }
 
   async function fetchItems() {
     const { data } = await supabase
@@ -54,7 +66,12 @@ export default function BudgetPage() {
     setLoading(false);
   }
 
-  useEffect(() => { fetchItems(); }, []);
+  useEffect(() => {
+    fetchCategories().then((cats) => {
+      setForm((f) => ({ ...f, category: f.category || cats[0] || '' }));
+    });
+    fetchItems();
+  }, []);
 
   async function saveItem(e: React.FormEvent) {
     e.preventDefault();
@@ -235,9 +252,11 @@ export default function BudgetPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-medium text-warm-gray mb-1">Category *</label>
-                <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                  {BUDGET_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <Dropdown
+                  value={form.category}
+                  options={categories}
+                  onChange={(v) => setForm({ ...form, category: v })}
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-warm-gray mb-1">Vendor</label>
@@ -265,11 +284,16 @@ export default function BudgetPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-warm-gray mb-1">Status</label>
-                <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as 'not_paid' | 'advance_paid' | 'settled' })}>
-                  <option value="not_paid">Not Paid</option>
-                  <option value="advance_paid">Advance Paid</option>
-                  <option value="settled">Settled</option>
-                </select>
+                <Dropdown
+                  value={form.status === 'not_paid' ? 'Not Paid' : form.status === 'advance_paid' ? 'Advance Paid' : 'Settled'}
+                  options={['Not Paid', 'Advance Paid', 'Settled']}
+                  onChange={(v) => {
+                    const map: Record<string, 'not_paid' | 'advance_paid' | 'settled'> = {
+                      'Not Paid': 'not_paid', 'Advance Paid': 'advance_paid', 'Settled': 'settled'
+                    };
+                    setForm({ ...form, status: map[v] });
+                  }}
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-warm-gray mb-1">Assignee</label>
@@ -277,10 +301,11 @@ export default function BudgetPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-warm-gray mb-1">Side *</label>
-                <select value={form.side} onChange={(e) => setForm({ ...form, side: e.target.value as 'bride' | 'groom' })}>
-                  <option value="groom">Groom&apos;s Side</option>
-                  <option value="bride">Bride&apos;s Side</option>
-                </select>
+                <Dropdown
+                  value={form.side === 'bride' ? "Bride's Side" : "Groom's Side"}
+                  options={["Groom's Side", "Bride's Side"]}
+                  onChange={(v) => setForm({ ...form, side: v === "Bride's Side" ? 'bride' : 'groom' })}
+                />
               </div>
               <div className="sm:col-span-2 lg:col-span-2">
                 <label className="block text-xs font-medium text-warm-gray mb-1">Notes</label>

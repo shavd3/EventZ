@@ -6,6 +6,9 @@ export interface Task {
   due_date: string | null;
   status: 'pending' | 'done';
   notes: string;
+  vendor: string;
+  contact: string;
+  price: number;
   created_at: string;
 }
 

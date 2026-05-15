@@ -151,14 +151,14 @@ export default function SchedulePage() {
         </div>
       ) : (
         <div className="relative">
-          <div className="absolute left-8 top-4 bottom-4 w-0.5 bg-gold/20" />
+          <div className="absolute left-[88px] top-4 bottom-4 w-0.5 bg-gold/20" />
           <div className="space-y-4">
             {items.map((item) => (
-              <div key={item.id} className="relative pl-20">
-                <div className="absolute left-0 top-3 w-16 text-right">
+              <div key={item.id} className="relative pl-28">
+                <div className="absolute left-0 top-3 w-20 text-right">
                   <span className="text-sm font-semibold text-gold whitespace-nowrap">{item.time}</span>
                 </div>
-                <div className="absolute left-[29px] top-4 w-3 h-3 rounded-full bg-gold border-2 border-white shadow-sm" />
+                <div className="absolute left-[83px] top-4 w-3 h-3 rounded-full bg-gold border-2 border-white shadow-sm" />
 
                 <div
                   className="card hover:shadow-md transition-shadow cursor-pointer group"

@@ -1,5 +1,29 @@
 -- Run this in Supabase SQL Editor to set up the database
 
+create table categories (
+  id uuid default gen_random_uuid() primary key,
+  name text not null unique,
+  sort_order int not null default 0,
+  created_at timestamptz default now()
+);
+
+-- Seed default categories
+insert into categories (name, sort_order) values
+  ('Venue & Church', 1),
+  ('Photography & Video', 2),
+  ('Catering & Food', 3),
+  ('Decor & Flowers', 4),
+  ('Attire & Grooming', 5),
+  ('Invitations & Stationery', 6),
+  ('Music & Entertainment', 7),
+  ('Transport', 8),
+  ('Hair & Makeup', 9),
+  ('Jewellery', 10),
+  ('Cake', 11),
+  ('Gifts & Favours', 12),
+  ('Honeymoon', 13),
+  ('Other', 14);
+
 create table tasks (
   id uuid default gen_random_uuid() primary key,
   title text not null,
@@ -8,8 +32,16 @@ create table tasks (
   due_date date,
   status text not null default 'pending' check (status in ('pending', 'done')),
   notes text not null default '',
+  vendor text not null default '',
+  contact text not null default '',
+  price numeric not null default 0,
   created_at timestamptz default now()
 );
+
+-- If tables already exist, run these instead:
+-- alter table tasks add column if not exists vendor text not null default '';
+-- alter table tasks add column if not exists contact text not null default '';
+-- alter table tasks add column if not exists price numeric not null default 0;
 
 create table timeline_milestones (
   id uuid default gen_random_uuid() primary key,
@@ -47,11 +79,13 @@ create table budget_items (
 );
 
 -- Enable Row Level Security but allow all operations (no auth required)
+alter table categories enable row level security;
 alter table tasks enable row level security;
 alter table timeline_milestones enable row level security;
 alter table schedule_items enable row level security;
 alter table budget_items enable row level security;
 
+create policy "Allow all access to categories" on categories for all using (true) with check (true);
 create policy "Allow all access to tasks" on tasks for all using (true) with check (true);
 create policy "Allow all access to timeline_milestones" on timeline_milestones for all using (true) with check (true);
 create policy "Allow all access to schedule_items" on schedule_items for all using (true) with check (true);

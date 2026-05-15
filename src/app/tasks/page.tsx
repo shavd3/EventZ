@@ -2,24 +2,56 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Task, TASK_CATEGORIES } from '@/lib/types';
-import { Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Task } from '@/lib/types';
+import { Plus, Trash2, ChevronDown, ChevronRight, Edit2, X, Phone, Store } from 'lucide-react';
+import Dropdown from '@/components/Dropdown';
 
-const emptyTask: Omit<Task, 'id' | 'created_at'> = {
-  title: '',
-  category: TASK_CATEGORIES[0],
-  assignee: '',
-  due_date: null,
-  status: 'pending',
-  notes: '',
+type TaskForm = {
+  title: string;
+  category: string;
+  assignee: string;
+  due_date: string;
+  notes: string;
+  vendor: string;
+  contact: string;
+  price: string;
 };
+
+const emptyForm: TaskForm = {
+  title: '',
+  category: '',
+  assignee: '',
+  due_date: '',
+  notes: '',
+  vendor: '',
+  contact: '',
+  price: '',
+};
+
+function formatLKR(amount: number) {
+  if (!amount) return '';
+  return 'Rs. ' + amount.toLocaleString('en-LK', { minimumFractionDigits: 2 });
+}
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(emptyTask);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [form, setForm] = useState<TaskForm>(emptyForm);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
+
+  async function fetchCategories() {
+    const { data } = await supabase
+      .from('categories')
+      .select('name')
+      .order('sort_order', { ascending: true });
+    const names = (data || []).map((c) => c.name);
+    setCategories(names);
+    return names;
+  }
 
   async function fetchTasks() {
     const { data } = await supabase
@@ -30,22 +62,54 @@ export default function TasksPage() {
     setLoading(false);
   }
 
-  useEffect(() => { fetchTasks(); }, []);
+  useEffect(() => {
+    fetchCategories().then((cats) => {
+      setForm((f) => ({ ...f, category: f.category || cats[0] || '' }));
+    });
+    fetchTasks();
+  }, []);
 
-  async function addTask(e: React.FormEvent) {
+  async function saveTask(e: React.FormEvent) {
     e.preventDefault();
     if (!form.title.trim()) return;
-    await supabase.from('tasks').insert({
+
+    const payload = {
       title: form.title,
       category: form.category,
       assignee: form.assignee,
       due_date: form.due_date || null,
-      status: 'pending',
       notes: form.notes,
-    });
-    setForm(emptyTask);
+      vendor: form.vendor,
+      contact: form.contact,
+      price: parseFloat(form.price) || 0,
+    };
+
+    if (editId) {
+      await supabase.from('tasks').update(payload).eq('id', editId);
+    } else {
+      await supabase.from('tasks').insert({ ...payload, status: 'pending' });
+    }
+
+    setForm(emptyForm);
     setShowForm(false);
+    setEditId(null);
     fetchTasks();
+  }
+
+  function startEdit(task: Task) {
+    setForm({
+      title: task.title,
+      category: task.category,
+      assignee: task.assignee,
+      due_date: task.due_date || '',
+      notes: task.notes,
+      vendor: task.vendor || '',
+      contact: task.contact || '',
+      price: task.price ? task.price.toString() : '',
+    });
+    setEditId(task.id);
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   async function toggleStatus(task: Task) {
@@ -60,14 +124,14 @@ export default function TasksPage() {
     fetchTasks();
   }
 
-  const grouped = TASK_CATEGORIES.reduce((acc, cat) => {
+  const grouped = categories.reduce((acc, cat) => {
     const catTasks = tasks.filter((t) => t.category === cat);
     if (catTasks.length > 0) acc[cat] = catTasks;
     return acc;
   }, {} as Record<string, Task[]>);
 
-  const uncategorized = tasks.filter((t) => !TASK_CATEGORIES.includes(t.category as typeof TASK_CATEGORIES[number]));
-  if (uncategorized.length > 0) grouped['Other'] = [...(grouped['Other'] || []), ...uncategorized];
+  const uncategorized = tasks.filter((t) => !categories.includes(t.category));
+  if (uncategorized.length > 0) grouped['Uncategorized'] = [...(grouped['Uncategorized'] || []), ...uncategorized];
 
   const totalTasks = tasks.length;
   const doneTasks = tasks.filter((t) => t.status === 'done').length;
@@ -81,7 +145,14 @@ export default function TasksPage() {
             {doneTasks} of {totalTasks} tasks completed
           </p>
         </div>
-        <button className="btn-gold flex items-center gap-2" onClick={() => setShowForm(!showForm)}>
+        <button
+          className="btn-gold flex items-center gap-2"
+          onClick={() => {
+            setShowForm(!showForm);
+            setEditId(null);
+            setForm(emptyForm);
+          }}
+        >
           <Plus size={16} /> Add Task
         </button>
       </div>
@@ -99,12 +170,23 @@ export default function TasksPage() {
         </p>
       </div>
 
-      {/* Add Task Form */}
+      {/* Add / Edit Form */}
       {showForm && (
-        <form onSubmit={addTask} className="card mb-6">
-          <h3 className="text-lg font-semibold text-gold mb-4">New Task</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
+        <form onSubmit={saveTask} className="card mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gold">
+              {editId ? 'Edit Task' : 'New Task'}
+            </h3>
+            <button
+              type="button"
+              onClick={() => { setShowForm(false); setEditId(null); }}
+              className="text-warm-gray-light hover:text-warm-gray"
+            >
+              <X size={18} />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="sm:col-span-2 lg:col-span-2">
               <label className="block text-xs font-medium text-warm-gray mb-1">Title *</label>
               <input
                 type="text"
@@ -116,14 +198,40 @@ export default function TasksPage() {
             </div>
             <div>
               <label className="block text-xs font-medium text-warm-gray mb-1">Category</label>
-              <select
+              <Dropdown
                 value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
-              >
-                {TASK_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
+                options={categories}
+                onChange={(v) => setForm({ ...form, category: v })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-warm-gray mb-1">Vendor / Party</label>
+              <input
+                type="text"
+                value={form.vendor}
+                onChange={(e) => setForm({ ...form, vendor: e.target.value })}
+                placeholder="e.g., Enexus Studio"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-warm-gray mb-1">Contact No.</label>
+              <input
+                type="tel"
+                value={form.contact}
+                onChange={(e) => setForm({ ...form, contact: e.target.value })}
+                placeholder="+94 77 xxx xxxx"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-warm-gray mb-1">Price (LKR)</label>
+              <input
+                type="number"
+                value={form.price}
+                onChange={(e) => setForm({ ...form, price: e.target.value })}
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-warm-gray mb-1">Assigned To</label>
@@ -138,23 +246,29 @@ export default function TasksPage() {
               <label className="block text-xs font-medium text-warm-gray mb-1">Due Date</label>
               <input
                 type="date"
-                value={form.due_date || ''}
-                onChange={(e) => setForm({ ...form, due_date: e.target.value || null })}
+                value={form.due_date}
+                onChange={(e) => setForm({ ...form, due_date: e.target.value })}
               />
             </div>
-            <div className="sm:col-span-2">
+            <div>
               <label className="block text-xs font-medium text-warm-gray mb-1">Notes</label>
-              <textarea
+              <input
+                type="text"
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                rows={2}
                 placeholder="Optional notes..."
               />
             </div>
           </div>
           <div className="flex gap-3 mt-4">
-            <button type="submit" className="btn-gold">Save Task</button>
-            <button type="button" className="btn-outline" onClick={() => setShowForm(false)}>Cancel</button>
+            <button type="submit" className="btn-gold">{editId ? 'Update Task' : 'Save Task'}</button>
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => { setShowForm(false); setEditId(null); }}
+            >
+              Cancel
+            </button>
           </div>
         </form>
       )}
@@ -178,7 +292,11 @@ export default function TasksPage() {
                 onClick={() => setCollapsed({ ...collapsed, [category]: !isCollapsed })}
               >
                 <div className="flex items-center gap-3">
-                  {isCollapsed ? <ChevronRight size={18} className="text-gold" /> : <ChevronDown size={18} className="text-gold" />}
+                  {isCollapsed ? (
+                    <ChevronRight size={18} className="text-gold" />
+                  ) : (
+                    <ChevronDown size={18} className="text-gold" />
+                  )}
                   <h3 className="text-lg font-semibold text-gold">{category}</h3>
                 </div>
                 <span className="text-xs text-warm-gray-light">
@@ -188,47 +306,111 @@ export default function TasksPage() {
 
               {!isCollapsed && (
                 <div className="mt-3 space-y-2">
-                  {catTasks.map((task) => (
-                    <div
-                      key={task.id}
-                      className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${
-                        task.status === 'done'
-                          ? 'bg-green-50/50 border-green-200'
-                          : 'bg-ivory/50 border-ivory-dark'
-                      }`}
-                    >
-                      <button
-                        onClick={() => toggleStatus(task)}
-                        className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                  {catTasks.map((task) => {
+                    const isExpanded = expanded[task.id];
+                    const hasDetails = task.vendor || task.contact || task.price > 0 || task.notes;
+                    return (
+                      <div
+                        key={task.id}
+                        className={`rounded-lg border transition-colors ${
                           task.status === 'done'
-                            ? 'bg-gold border-gold text-white'
-                            : 'border-warm-gray-light hover:border-gold'
+                            ? 'bg-green-50/50 border-green-200'
+                            : 'bg-ivory/50 border-ivory-dark'
                         }`}
                       >
-                        {task.status === 'done' && (
-                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                            <path d="M2 6L5 9L10 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )}
-                      </button>
-                      <div className="flex-1 min-w-0">
-                        <p className={`font-medium text-sm ${task.status === 'done' ? 'line-through text-warm-gray-light' : ''}`}>
-                          {task.title}
-                        </p>
-                        <div className="flex flex-wrap gap-3 mt-1 text-xs text-warm-gray-light">
-                          {task.assignee && <span>Assigned: {task.assignee}</span>}
-                          {task.due_date && <span>Due: {new Date(task.due_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
+                        {/* Main row */}
+                        <div className="flex items-start gap-3 p-3">
+                          <button
+                            onClick={() => toggleStatus(task)}
+                            className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                              task.status === 'done'
+                                ? 'bg-gold border-gold text-white'
+                                : 'border-warm-gray-light hover:border-gold'
+                            }`}
+                          >
+                            {task.status === 'done' && (
+                              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                                <path d="M2 6L5 9L10 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            )}
+                          </button>
+                          <div className="flex-1 min-w-0">
+                            <p className={`font-medium text-sm ${task.status === 'done' ? 'line-through text-warm-gray-light' : ''}`}>
+                              {task.title}
+                            </p>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs text-warm-gray-light">
+                              {task.assignee && <span>Assigned: {task.assignee}</span>}
+                              {task.due_date && (
+                                <span>
+                                  Due: {new Date(task.due_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            {hasDetails && (
+                              <button
+                                onClick={() => setExpanded({ ...expanded, [task.id]: !isExpanded })}
+                                className="p-1 text-warm-gray-light hover:text-gold transition-colors"
+                                title="Show details"
+                              >
+                                <ChevronDown size={14} className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => startEdit(task)}
+                              className="p-1 text-warm-gray-light hover:text-gold transition-colors"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            <button
+                              onClick={() => deleteTask(task.id)}
+                              className="p-1 text-warm-gray-light hover:text-red-500 transition-colors"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </div>
-                        {task.notes && <p className="text-xs text-warm-gray-light mt-1 italic">{task.notes}</p>}
+
+                        {/* Expanded details */}
+                        {isExpanded && hasDetails && (
+                          <div className="px-3 pb-3 pt-0 ml-8 border-t border-ivory-dark/50 mt-0">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3">
+                              {task.vendor && (
+                                <div className="flex items-center gap-2 text-xs">
+                                  <Store size={13} className="text-gold flex-shrink-0" />
+                                  <div>
+                                    <span className="text-warm-gray-light">Vendor</span>
+                                    <p className="font-medium text-warm-gray">{task.vendor}</p>
+                                  </div>
+                                </div>
+                              )}
+                              {task.contact && (
+                                <div className="flex items-center gap-2 text-xs">
+                                  <Phone size={13} className="text-gold flex-shrink-0" />
+                                  <div>
+                                    <span className="text-warm-gray-light">Contact</span>
+                                    <p className="font-medium text-warm-gray">{task.contact}</p>
+                                  </div>
+                                </div>
+                              )}
+                              {task.price > 0 && (
+                                <div className="text-xs">
+                                  <span className="text-warm-gray-light">Price</span>
+                                  <p className="font-medium text-gold">{formatLKR(task.price)}</p>
+                                </div>
+                              )}
+                            </div>
+                            {task.notes && (
+                              <p className="text-xs text-warm-gray-light mt-2 italic border-t border-ivory-dark/50 pt-2">
+                                {task.notes}
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <button
-                        onClick={() => deleteTask(task.id)}
-                        className="text-warm-gray-light hover:text-red-500 transition-colors flex-shrink-0"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
