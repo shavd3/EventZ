@@ -60,6 +60,34 @@ export const TASK_CATEGORIES = [
   'Other',
 ] as const;
 
+export interface GuestItem {
+  id: string;
+  first_name: string;
+  last_name: string;
+  side: 'bride' | 'groom';
+  rsvp_status: 'pending' | 'confirmed' | 'declined';
+  meal_preference: string;
+  save_the_date_sent: boolean;
+  invitation_sent: boolean;
+  category: string;
+  count: number;
+  address: string;
+  gifted_amount: number;
+  created_at: string;
+}
+
+export const GUEST_CATEGORIES = [
+  'Office',
+  'Family',
+  'School',
+  'Uni',
+  'Relations',
+  'Students',
+  'Friends',
+  'Retinue',
+  'Extended Family',
+] as const;
+
 export const BUDGET_CATEGORIES = [
   'Venue & Church',
   'Photography & Video',

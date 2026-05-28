@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { ChevronDown } from 'lucide-react';
+import Select, { StylesConfig, SingleValue } from 'react-select';
 
 interface DropdownProps {
   value: string;
@@ -10,49 +9,73 @@ interface DropdownProps {
   placeholder?: string;
 }
 
-export default function Dropdown({ value, options, onChange, placeholder }: DropdownProps) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+type Option = { value: string; label: string };
 
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
+const dropdownStyles: StylesConfig<Option, false> = {
+  control: (base, state) => ({
+    ...base,
+    minHeight: 38,
+    fontSize: '0.875rem',
+    borderRadius: '0.5rem',
+    borderWidth: '1.5px',
+    borderColor: state.isFocused ? '#b8860b' : '#e0d8d0',
+    boxShadow: state.isFocused ? '0 0 0 3px rgba(184,134,11,0.1)' : 'none',
+    backgroundColor: 'white',
+    cursor: 'pointer',
+    transition: 'border-color 0.2s',
+    '&:hover': { borderColor: '#b8860b' },
+  }),
+  valueContainer: (base) => ({ ...base, padding: '2px 10px' }),
+  singleValue: (base) => ({ ...base, color: '#3d3530', fontSize: '0.875rem' }),
+  placeholder: (base) => ({ ...base, color: '#9c8e85', fontSize: '0.875rem' }),
+  indicatorSeparator: () => ({ display: 'none' }),
+  dropdownIndicator: (base, state) => ({
+    ...base,
+    padding: '0 8px',
+    color: '#9c8e85',
+    transform: state.selectProps.menuIsOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+    transition: 'transform 0.2s',
+  }),
+  menu: (base) => ({
+    ...base,
+    fontSize: '0.875rem',
+    borderRadius: '0.5rem',
+    border: '1px solid #e0d8d0',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+    overflow: 'hidden',
+    zIndex: 9999,
+  }),
+  menuList: (base) => ({ ...base, padding: 4 }),
+  option: (base, state) => ({
+    ...base,
+    fontSize: '0.875rem',
+    borderRadius: '0.375rem',
+    padding: '8px 12px',
+    backgroundColor: state.isSelected
+      ? '#b8860b'
+      : state.isFocused
+      ? 'rgba(184,134,11,0.08)'
+      : 'white',
+    color: state.isSelected ? 'white' : '#3d3530',
+    cursor: 'pointer',
+    '&:active': { backgroundColor: '#b8860b', color: 'white' },
+  }),
+};
+
+export default function Dropdown({ value, options, onChange, placeholder }: DropdownProps) {
+  const opts: Option[] = (options as string[]).map((o) => ({ value: o, label: o || '—' }));
+  const current = opts.find((o) => o.value === value) ?? null;
 
   return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-3 py-2 text-sm border-[1.5px] border-[#e0d8d0] rounded-lg bg-white text-left transition-colors hover:border-[#b8860b] focus:outline-none focus:border-[#b8860b] focus:shadow-[0_0_0_3px_rgba(184,134,11,0.1)]"
-      >
-        <span className={value ? 'text-[#3d3530]' : 'text-[#9c8e85]'}>
-          {value || placeholder || 'Select...'}
-        </span>
-        <ChevronDown size={16} className={`text-[#9c8e85] transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-
-      {open && (
-        <div className="absolute z-50 mt-1 w-full bg-white border border-[#e0d8d0] rounded-lg shadow-lg max-h-56 overflow-y-auto">
-          {options.map((opt) => (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => { onChange(opt); setOpen(false); }}
-              className={`w-full text-left px-3 py-2.5 text-sm transition-colors ${
-                value === opt
-                  ? 'bg-[#b8860b]/10 text-[#b8860b] font-medium'
-                  : 'text-[#3d3530] hover:bg-[#faf8f5]'
-              }`}
-            >
-              {opt}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <Select
+      options={opts}
+      value={current}
+      onChange={(opt: SingleValue<Option>) => onChange(opt?.value ?? '')}
+      styles={dropdownStyles}
+      isSearchable={false}
+      menuPortalTarget={typeof document !== 'undefined' ? document.body : undefined}
+      menuPosition="fixed"
+      placeholder={placeholder ?? 'Select...'}
+    />
   );
 }

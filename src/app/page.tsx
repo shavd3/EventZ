@@ -4,7 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { CheckSquare, Calendar, Clock, Wallet } from 'lucide-react';
+import { CheckSquare, Calendar, Clock, Wallet, Users } from 'lucide-react';
 
 const WEDDING_DATE = new Date('2026-10-10T15:00:00+05:30');
 
@@ -34,6 +34,8 @@ export default function Dashboard() {
     totalPaid: 0,
     milestonesTotal: 0,
     milestonesDone: 0,
+    totalGuests: 0,
+    confirmedGuests: 0,
   });
 
   useEffect(() => {
@@ -45,13 +47,15 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function fetchStats() {
-      const [tasks, budget] = await Promise.all([
+      const [tasks, budget, guests] = await Promise.all([
         supabase.from('tasks').select('status, due_date'),
         supabase.from('budget_items').select('total_expense, advance_paid, status'),
+        supabase.from('guest_items').select('count, rsvp_status'),
       ]);
 
       const taskData = tasks.data || [];
       const budgetData = budget.data || [];
+      const guestData = guests.data || [];
       const withDueDate = taskData.filter((t) => t.due_date);
 
       setStats({
@@ -64,6 +68,8 @@ export default function Dashboard() {
         }, 0),
         milestonesTotal: withDueDate.length,
         milestonesDone: withDueDate.filter((t) => t.status === 'done').length,
+        totalGuests: guestData.reduce((sum, g) => sum + Number(g.count), 0),
+        confirmedGuests: guestData.filter((g) => g.rsvp_status === 'confirmed').reduce((sum, g) => sum + Number(g.count), 0),
       });
     }
     fetchStats();
@@ -110,7 +116,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
         <Link href="/tasks" className="card hover:shadow-md transition-shadow group">
           <div className="flex items-center gap-3 mb-3">
             <div className="p-2 bg-gold/10 rounded-lg">
@@ -159,6 +165,23 @@ export default function Dashboard() {
           </div>
           <p className="text-lg font-semibold text-gold mt-1">3:00 PM</p>
           <p className="text-xs text-warm-gray-light mt-2">St. Sebastians Church</p>
+        </Link>
+
+        <Link href="/guests" className="card hover:shadow-md transition-shadow group">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-2 bg-gold/10 rounded-lg">
+              <Users size={20} className="text-gold" />
+            </div>
+            <h3 className="text-sm font-medium text-warm-gray">Guests</h3>
+          </div>
+          <p className="text-2xl font-bold text-gold">{stats.totalGuests}</p>
+          <div className="mt-2 h-2 bg-ivory-dark rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gold rounded-full transition-all"
+              style={{ width: stats.totalGuests > 0 ? `${Math.round((stats.confirmedGuests / stats.totalGuests) * 100)}%` : '0%' }}
+            />
+          </div>
+          <p className="text-xs text-warm-gray-light mt-1">{stats.confirmedGuests} confirmed</p>
         </Link>
       </div>
     </div>

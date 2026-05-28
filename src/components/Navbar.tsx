@@ -12,6 +12,7 @@ const navLinks = [
   { href: '/timeline', label: 'Timeline' },
   { href: '/schedule', label: 'Wedding Day' },
   { href: '/budget', label: 'Budget' },
+  { href: '/guests', label: 'Guests' },
   { href: '/settings', label: 'Categories' },
 ];
 
