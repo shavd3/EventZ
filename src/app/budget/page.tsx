@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { BudgetItem } from '@/lib/types';
 import { Plus, Trash2, Edit2, X } from 'lucide-react';
@@ -46,6 +46,7 @@ export default function BudgetPage() {
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(true);
   const [filterSide, setFilterSide] = useState<'all' | 'bride' | 'groom'>('all');
+  const formRef = useRef<HTMLDivElement>(null);
 
   async function fetchCategories() {
     const { data } = await supabase
@@ -166,9 +167,15 @@ export default function BudgetPage() {
         <button
           className="btn-gold flex items-center gap-2"
           onClick={() => {
-            setShowForm(!showForm);
+            const opening = !showForm;
+            setShowForm(opening);
             setEditId(null);
             setForm(emptyForm);
+            if (opening) {
+              setTimeout(() => {
+                formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }, 50);
+            }
           }}
         >
           <Plus size={16} /> Add Expense
@@ -239,7 +246,7 @@ export default function BudgetPage() {
 
       {/* Add/Edit Form */}
       {showForm && (
-        <div className="card mb-6">
+        <div ref={formRef} className="card mb-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gold">
               {editId ? 'Edit Expense' : 'New Expense'}
