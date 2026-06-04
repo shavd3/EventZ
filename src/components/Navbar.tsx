@@ -12,7 +12,9 @@ const navLinks = [
   { href: '/timeline', label: 'Timeline' },
   { href: '/schedule', label: 'Wedding Day' },
   { href: '/budget', label: 'Budget' },
-  { href: '/guests', label: 'Guests' },
+  { href: '/church-guests', label: 'Church Guests' },
+  { href: '/cinnamon-grand-guests', label: 'Cinnamon Grand Guests' },
+  { href: '/assignments', label: 'Assignments' },
   { href: '/settings', label: 'Categories' },
 ];
 

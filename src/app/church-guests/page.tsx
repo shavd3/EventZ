@@ -187,7 +187,7 @@ function itemToForm(item: GuestItem): GuestForm {
   };
 }
 
-export default function GuestsPage() {
+export default function ChurchGuestsPage() {
   const [items, setItems] = useState<GuestItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -387,7 +387,7 @@ export default function GuestsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-gold">Guest List</h1>
+          <h1 className="text-3xl font-bold text-gold">Church Guests</h1>
           <p className="text-warm-gray-light text-sm mt-1">{items.length} entries · {grandTotal} guests total</p>
         </div>
         <button
