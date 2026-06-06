@@ -1,36 +1,102 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+<div align="center">
+
+# EventZ
+
+### Event Planning Timeline & Budget Organiser
+
+[![Live Demo](https://img.shields.io/badge/Live_Demo-event--z--psi.vercel.app-22c55e?style=for-the-badge&logo=vercel&logoColor=white)](https://event-z-psi.vercel.app)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-3FCF8E?style=for-the-badge&logo=supabase&logoColor=white)
+
+A full-stack web application for planning and coordinating events end-to-end — from timeline and task management to budget tracking and guest organisation.
+
+</div>
+
+---
+
+## Features
+
+| Module | Description |
+|---|---|
+| **Timeline** | Visual event timeline with milestone tracking |
+| **Schedule** | Day-of schedule builder with time slots |
+| **Tasks** | Task list with assignments and completion tracking |
+| **Assignments** | Delegate responsibilities to team members |
+| **Budget** | Expense tracking and budget overview |
+| **Guest Management** | Separate guest lists per venue |
+| **Settings** | Event configuration and preferences |
+
+---
+
+## Tech Stack
+
+- **Framework**: [Next.js 16](https://nextjs.org) (App Router) with TypeScript
+- **UI**: React 19 + [Tailwind CSS v4](https://tailwindcss.com) + [Lucide Icons](https://lucide.dev)
+- **Database**: [Supabase](https://supabase.com) (PostgreSQL with Row Level Security)
+- **Utilities**: [date-fns](https://date-fns.org), [react-select](https://react-select.com)
+- **Deployment**: [Vercel](https://vercel.com)
+
+---
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 18+
+- A [Supabase](https://supabase.com) project
+
+### Setup
 
 ```bash
+# Clone the repo
+git clone https://github.com/shavd3/EventZ.git
+cd EventZ
+
+# Install dependencies
+npm install
+
+# Configure environment variables
+cp .env.example .env.local
+# Add your Supabase URL and anon key to .env.local
+
+# Start the development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Environment Variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## Project Structure
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+src/
+├── app/
+│   ├── timeline/          # Event timeline view
+│   ├── schedule/          # Day-of schedule
+│   ├── tasks/             # Task management
+│   ├── assignments/       # Role assignments
+│   ├── budget/            # Budget tracker
+│   ├── church-guests/     # Venue A guest list
+│   ├── cinnamon-grand-guests/ # Venue B guest list
+│   └── settings/          # App settings
+├── components/            # Shared UI components
+└── lib/
+    ├── supabase.ts        # Supabase client
+    └── types.ts           # TypeScript types
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+<div align="center">
+Made with Next.js + Supabase · <a href="https://event-z-psi.vercel.app">Live Demo</a>
+</div>
