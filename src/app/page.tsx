@@ -52,7 +52,7 @@ export default function Dashboard() {
       const [tasks, budget, churchGuests, cinnamonGuests] = await Promise.all([
         supabase.from('tasks').select('status, due_date'),
         supabase.from('budget_items').select('total_expense, advance_paid, status'),
-        supabase.from('guest_items').select('count, rsvp_status'),
+        supabase.from('guest_items').select('count, rsvp_status, confirmed_count'),
         supabase.from('cinnamon_grand_guests').select('count, rsvp_status'),
       ]);
 
@@ -73,7 +73,12 @@ export default function Dashboard() {
         milestonesTotal: withDueDate.length,
         milestonesDone: withDueDate.filter((t) => t.status === 'done').length,
         churchGuests: churchData.reduce((sum, g) => sum + Number(g.count), 0),
-        churchConfirmed: churchData.filter((g) => g.rsvp_status === 'confirmed').reduce((sum, g) => sum + Number(g.count), 0),
+        churchConfirmed: churchData
+          .filter((g) => g.rsvp_status === 'confirmed')
+          .reduce(
+            (sum, g) => sum + Number(g.confirmed_count ?? g.count),
+            0
+          ),
         cinnamonGuests: cinnamonData.reduce((sum, g) => sum + Number(g.count), 0),
         cinnamonConfirmed: cinnamonData.filter((g) => g.rsvp_status === 'confirmed').reduce((sum, g) => sum + Number(g.count), 0),
       });
