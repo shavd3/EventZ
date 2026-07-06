@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { GuestItem, GUEST_CATEGORIES } from '@/lib/types';
+import { GuestItem, GUEST_CATEGORIES, attendingCount, invitedHeadcount } from '@/lib/types';
 import { Plus, Trash2, Edit2, X, Check, Search, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import Dropdown from '@/components/Dropdown';
 import Select, { StylesConfig, SingleValue, components, DropdownIndicatorProps } from 'react-select';
@@ -262,16 +262,16 @@ export default function ChurchGuestsPage() {
   const brideItems = items.filter((i) => i.side === 'bride');
   const groomItems = items.filter((i) => i.side === 'groom');
 
-  const brideTotal = brideItems.reduce((s, i) => s + i.count, 0);
-  const brideConfirmed = brideItems.filter((i) => i.rsvp_status === 'confirmed').reduce((s, i) => s + i.count, 0);
-  const bridePending = brideItems.filter((i) => i.rsvp_status === 'pending').reduce((s, i) => s + i.count, 0);
-  const brideDeclined = brideItems.filter((i) => i.rsvp_status === 'declined').reduce((s, i) => s + i.count, 0);
+  const brideTotal = brideItems.reduce((s, i) => s + invitedHeadcount(i), 0);
+  const brideConfirmed = brideItems.reduce((s, i) => s + attendingCount(i), 0);
+  const bridePending = brideItems.filter((i) => i.rsvp_status === 'pending').reduce((s, i) => s + invitedHeadcount(i), 0);
+  const brideDeclined = brideItems.filter((i) => i.rsvp_status === 'declined').reduce((s, i) => s + invitedHeadcount(i), 0);
   const brideGifted = brideItems.reduce((s, i) => s + Number(i.gifted_amount), 0);
 
-  const groomTotal = groomItems.reduce((s, i) => s + i.count, 0);
-  const groomConfirmed = groomItems.filter((i) => i.rsvp_status === 'confirmed').reduce((s, i) => s + i.count, 0);
-  const groomPending = groomItems.filter((i) => i.rsvp_status === 'pending').reduce((s, i) => s + i.count, 0);
-  const groomDeclined = groomItems.filter((i) => i.rsvp_status === 'declined').reduce((s, i) => s + i.count, 0);
+  const groomTotal = groomItems.reduce((s, i) => s + invitedHeadcount(i), 0);
+  const groomConfirmed = groomItems.reduce((s, i) => s + attendingCount(i), 0);
+  const groomPending = groomItems.filter((i) => i.rsvp_status === 'pending').reduce((s, i) => s + invitedHeadcount(i), 0);
+  const groomDeclined = groomItems.filter((i) => i.rsvp_status === 'declined').reduce((s, i) => s + invitedHeadcount(i), 0);
   const groomGifted = groomItems.reduce((s, i) => s + Number(i.gifted_amount), 0);
 
   const grandTotal = brideTotal + groomTotal;
@@ -388,7 +388,9 @@ export default function ChurchGuestsPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gold">Church Guests</h1>
-          <p className="text-warm-gray-light text-sm mt-1">{items.length} entries · {grandTotal} guests total</p>
+          <p className="text-warm-gray-light text-sm mt-1">
+            {items.length} entries · {grandTotal} invited · {grandConfirmed} attending
+          </p>
         </div>
         <button
           className="btn-gold flex items-center gap-2"
@@ -411,9 +413,9 @@ export default function ChurchGuestsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="card">
           <h3 className="text-sm font-semibold text-warm-gray-light uppercase tracking-wide mb-3">Bride&apos;s Side</h3>
-          <p className="text-2xl font-bold text-gold mb-1">{brideTotal} guests</p>
+          <p className="text-2xl font-bold text-gold mb-1">{brideTotal} invited</p>
           <div className="flex flex-wrap gap-2 text-xs mb-3">
-            <span className="status-badge status-confirmed">{brideConfirmed} confirmed</span>
+            <span className="status-badge status-confirmed">{brideConfirmed} attending</span>
             <span className="status-badge status-pending">{bridePending} pending</span>
             <span className="status-badge status-declined">{brideDeclined} declined</span>
           </div>
@@ -421,14 +423,14 @@ export default function ChurchGuestsPage() {
           <div className="mt-2 h-2 bg-ivory-dark rounded-full overflow-hidden">
             <div className="h-full bg-gold rounded-full transition-all" style={{ width: brideTotal > 0 ? `${(brideConfirmed / brideTotal) * 100}%` : '0%' }} />
           </div>
-          <p className="text-xs text-warm-gray-light mt-1">{brideTotal > 0 ? Math.round((brideConfirmed / brideTotal) * 100) : 0}% confirmed</p>
+          <p className="text-xs text-warm-gray-light mt-1">{brideTotal > 0 ? Math.round((brideConfirmed / brideTotal) * 100) : 0}% attending</p>
         </div>
 
         <div className="card">
           <h3 className="text-sm font-semibold text-warm-gray-light uppercase tracking-wide mb-3">Groom&apos;s Side</h3>
-          <p className="text-2xl font-bold text-gold mb-1">{groomTotal} guests</p>
+          <p className="text-2xl font-bold text-gold mb-1">{groomTotal} invited</p>
           <div className="flex flex-wrap gap-2 text-xs mb-3">
-            <span className="status-badge status-confirmed">{groomConfirmed} confirmed</span>
+            <span className="status-badge status-confirmed">{groomConfirmed} attending</span>
             <span className="status-badge status-pending">{groomPending} pending</span>
             <span className="status-badge status-declined">{groomDeclined} declined</span>
           </div>
@@ -436,14 +438,14 @@ export default function ChurchGuestsPage() {
           <div className="mt-2 h-2 bg-ivory-dark rounded-full overflow-hidden">
             <div className="h-full bg-gold rounded-full transition-all" style={{ width: groomTotal > 0 ? `${(groomConfirmed / groomTotal) * 100}%` : '0%' }} />
           </div>
-          <p className="text-xs text-warm-gray-light mt-1">{groomTotal > 0 ? Math.round((groomConfirmed / groomTotal) * 100) : 0}% confirmed</p>
+          <p className="text-xs text-warm-gray-light mt-1">{groomTotal > 0 ? Math.round((groomConfirmed / groomTotal) * 100) : 0}% attending</p>
         </div>
 
         <div className="card">
           <h3 className="text-sm font-semibold text-warm-gray-light uppercase tracking-wide mb-3">Grand Total</h3>
-          <p className="text-2xl font-bold text-gold mb-1">{grandTotal} guests</p>
+          <p className="text-2xl font-bold text-gold mb-1">{grandTotal} invited</p>
           <div className="flex flex-wrap gap-2 text-xs mb-3">
-            <span className="status-badge status-confirmed">{grandConfirmed} confirmed</span>
+            <span className="status-badge status-confirmed">{grandConfirmed} attending</span>
             <span className="status-badge status-pending">{grandPending} pending</span>
             <span className="status-badge status-declined">{grandDeclined} declined</span>
           </div>
@@ -451,7 +453,7 @@ export default function ChurchGuestsPage() {
           <div className="mt-2 h-2 bg-ivory-dark rounded-full overflow-hidden">
             <div className="h-full bg-gold rounded-full transition-all" style={{ width: grandTotal > 0 ? `${(grandConfirmed / grandTotal) * 100}%` : '0%' }} />
           </div>
-          <p className="text-xs text-warm-gray-light mt-1">{grandTotal > 0 ? Math.round((grandConfirmed / grandTotal) * 100) : 0}% confirmed</p>
+          <p className="text-xs text-warm-gray-light mt-1">{grandTotal > 0 ? Math.round((grandConfirmed / grandTotal) * 100) : 0}% attending</p>
         </div>
       </div>
 
@@ -546,7 +548,10 @@ export default function ChurchGuestsPage() {
         <p className="text-xs text-warm-gray-light mt-2">
           Showing {filteredItems.length} of {items.length} entries
           {filteredItems.length !== items.length && (
-            <span className="text-gold font-medium"> · {filteredItems.reduce((s, i) => s + i.count, 0)} guests</span>
+            <span className="text-gold font-medium">
+              {' '}· {filteredItems.reduce((s, i) => s + invitedHeadcount(i), 0)} invited
+              {' '}· {filteredItems.reduce((s, i) => s + attendingCount(i), 0)} attending
+            </span>
           )}
         </p>
       </div>
@@ -643,9 +648,10 @@ export default function ChurchGuestsPage() {
                   { label: 'Name', field: 'first_name' as keyof GuestItem, align: 'left' },
                   { label: 'Category', field: 'category' as keyof GuestItem, align: 'left' },
                   { label: 'Address', field: 'address' as keyof GuestItem, align: 'left' },
-                  { label: 'Count', field: 'count' as keyof GuestItem, align: 'center' },
+                  { label: 'Invited', field: 'count' as keyof GuestItem, align: 'center' },
                   { label: 'Gifted', field: 'gifted_amount' as keyof GuestItem, align: 'right' },
                   { label: 'RSVP', field: 'rsvp_status' as keyof GuestItem, align: 'left' },
+                  { label: 'Attending', field: 'confirmed_count' as keyof GuestItem, align: 'center' },
                   { label: 'Save Date', field: 'save_the_date_sent' as keyof GuestItem, align: 'center' },
                   { label: 'Invite', field: 'invitation_sent' as keyof GuestItem, align: 'center' },
                   { label: 'Side', field: 'side' as keyof GuestItem, align: 'left' },
@@ -686,6 +692,7 @@ export default function ChurchGuestsPage() {
                         <td className="px-3 py-2 min-w-[60px]">{inlineInput('count', 'number')}</td>
                         <td className="px-3 py-2 min-w-[80px]">{inlineInput('gifted_amount', 'number')}</td>
                         <td className="px-3 py-2 min-w-[110px]">{inlineSelect('rsvp_status', ['pending', 'confirmed', 'declined'])}</td>
+                        <td className="px-3 py-2 text-center text-warm-gray-light text-xs">—</td>
                         <td className="px-3 py-2 text-center">{inlineCheck('save_the_date_sent')}</td>
                         <td className="px-3 py-2 text-center">{inlineCheck('invitation_sent')}</td>
                         <td className="px-3 py-2 min-w-[80px]">{inlineSelect('side', ['bride', 'groom'])}</td>
@@ -717,6 +724,9 @@ export default function ChurchGuestsPage() {
                         <td className="px-4 py-3 text-center font-semibold text-warm-gray">{item.count}</td>
                         <td className="px-4 py-3 text-right text-warm-gray">{item.gifted_amount > 0 ? formatLKR(Number(item.gifted_amount)) : '—'}</td>
                         <td className="px-4 py-3">{rsvpBadge(item.rsvp_status)}</td>
+                        <td className="px-4 py-3 text-center font-semibold text-warm-gray">
+                          {item.rsvp_status === 'confirmed' ? (item.confirmed_count ?? item.count) : '—'}
+                        </td>
                         <td className="px-4 py-3 text-center">{boolBadge(item.save_the_date_sent)}</td>
                         <td className="px-4 py-3 text-center">{boolBadge(item.invitation_sent)}</td>
                         <td className="px-4 py-3">

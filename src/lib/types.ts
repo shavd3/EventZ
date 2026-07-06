@@ -71,9 +71,21 @@ export interface GuestItem {
   invitation_sent: boolean;
   category: string;
   count: number;
+  confirmed_count: number | null;
   address: string;
   gifted_amount: number;
   created_at: string;
+}
+
+/** Headcount actually attending when RSVP is confirmed; falls back to invited count. */
+export function attendingCount(guest: GuestItem): number {
+  if (guest.rsvp_status !== 'confirmed') return 0;
+  return guest.confirmed_count ?? guest.count;
+}
+
+/** Headcount for pending/declined tallies (invitation size). */
+export function invitedHeadcount(guest: GuestItem): number {
+  return guest.count;
 }
 
 export const GUEST_CATEGORIES = [

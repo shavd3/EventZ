@@ -192,7 +192,7 @@ export default function Dashboard() {
               style={{ width: stats.churchGuests > 0 ? `${Math.round((stats.churchConfirmed / stats.churchGuests) * 100)}%` : '0%' }}
             />
           </div>
-          <p className="text-xs text-warm-gray-light mt-1">{stats.churchConfirmed} confirmed</p>
+          <p className="text-xs text-warm-gray-light mt-1">{stats.churchConfirmed} attending</p>
         </Link>
 
         <Link href="/cinnamon-grand-guests" className="card hover:shadow-md transition-shadow group">
