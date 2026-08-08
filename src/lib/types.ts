@@ -72,6 +72,8 @@ export interface GuestItem {
   category: string;
   count: number;
   confirmed_count: number | null;
+  /** Set by supabase-invite.sql; drives the personal link the invitation site serves. */
+  invite_token: string | null;
   address: string;
   gifted_amount: number;
   created_at: string;

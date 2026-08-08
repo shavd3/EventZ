@@ -4,7 +4,6 @@
 
 ### Event Planning Timeline & Budget Organiser
 
-[![Live Demo](https://img.shields.io/badge/Live_Demo-event--z--psi.vercel.app-22c55e?style=for-the-badge&logo=vercel&logoColor=white)](https://event-z-psi.vercel.app)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)
@@ -72,7 +71,12 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+ADMIN_PASSWORD=choose_a_strong_password
 ```
+
+> `ADMIN_PASSWORD` gates the entire app via `src/proxy.ts`. It is **required** — if it is unset the
+> app fails closed and every route redirects to `/login`, which will report the missing config.
+> Set it locally and in your Vercel project settings.
 
 ---
 
@@ -98,5 +102,5 @@ src/
 ---
 
 <div align="center">
-Made with Next.js + Supabase · <a href="https://event-z-psi.vercel.app">Live Demo</a>
+Made with Next.js + Supabase
 </div>

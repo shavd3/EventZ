@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, LogOut } from 'lucide-react';
 
 const navLinks = [
   { href: '/', label: 'Dashboard' },
@@ -21,6 +21,14 @@ const navLinks = [
 export default function Navbar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  async function handleLogout() {
+    await fetch('/api/login', { method: 'DELETE' });
+    window.location.href = '/login';
+  }
+
+  // The login page is the one screen that renders without the nav.
+  if (pathname === '/login') return null;
 
   return (
     <nav className="bg-white border-b border-ivory-dark sticky top-0 z-50">
@@ -47,6 +55,14 @@ export default function Navbar() {
                 {link.label}
               </Link>
             ))}
+            <button
+              onClick={handleLogout}
+              title="Log out"
+              aria-label="Log out"
+              className="ml-1 p-2 rounded-lg text-warm-gray-light hover:text-gold hover:bg-gold/5 transition-colors"
+            >
+              <LogOut size={16} />
+            </button>
           </div>
 
           <button
@@ -73,6 +89,12 @@ export default function Navbar() {
                 {link.label}
               </Link>
             ))}
+            <button
+              onClick={handleLogout}
+              className="flex w-full items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium text-warm-gray-light hover:text-gold hover:bg-gold/5 transition-colors"
+            >
+              <LogOut size={16} /> Log out
+            </button>
           </div>
         )}
       </div>

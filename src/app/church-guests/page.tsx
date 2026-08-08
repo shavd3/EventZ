@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { GuestItem, GUEST_CATEGORIES, attendingCount, invitedHeadcount } from '@/lib/types';
-import { Plus, Trash2, Edit2, X, Check, Search, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, Check, Search, ChevronsUpDown, ChevronUp, ChevronDown, Copy, Link2 } from 'lucide-react';
+import { inviteUrl, generateInviteToken } from '@/lib/invite';
 import Dropdown from '@/components/Dropdown';
 import Select, { StylesConfig, SingleValue, components, DropdownIndicatorProps } from 'react-select';
 import { ChevronDown as ChevronDownIcon } from 'lucide-react';
@@ -116,16 +117,20 @@ const PillDropdownIndicator = (props: DropdownIndicatorProps<SelectOption, false
   </components.DropdownIndicator>
 );
 
-function PillSelect({ value, options, onChange, placeholder }: {
+function PillSelect({ value, options, onChange, placeholder, instanceId }: {
   value: string;
   options: { value: string; label: string }[];
   onChange: (v: string) => void;
   placeholder: string;
+  /** Required: react-select numbers its DOM ids from a module counter, which lands on
+   *  different values during SSR and hydration. A stable id keeps the markup matching. */
+  instanceId: string;
 }) {
   const current = options.find((o) => o.value === value) ?? null;
   const active = !!value;
   return (
     <Select
+      instanceId={instanceId}
       options={options}
       value={current}
       onChange={(opt: SingleValue<SelectOption>) => onChange(opt?.value ?? '')}
@@ -144,8 +149,13 @@ function formatLKR(amount: number) {
 }
 
 type GuestForm = {
-  first_name: string;
-  last_name: string;
+  /**
+   * The whole name, entered as one field — entries are often "Mr & Mrs Abcd Fernando" rather
+   * than a first/last pair. It saves into `first_name` with `last_name` blank; the DB keeps both
+   * columns, and the invite site joins them with a space, so split and merged rows produce
+   * identical display names and identical invite links.
+   */
+  name: string;
   side: 'bride' | 'groom';
   rsvp_status: 'pending' | 'confirmed' | 'declined';
   meal_preference: string;
@@ -153,13 +163,13 @@ type GuestForm = {
   invitation_sent: boolean;
   category: string;
   count: string;
+  confirmed_count: string;
   address: string;
   gifted_amount: string;
 };
 
 const emptyForm: GuestForm = {
-  first_name: '',
-  last_name: '',
+  name: '',
   side: 'groom',
   rsvp_status: 'pending',
   meal_preference: '',
@@ -167,14 +177,14 @@ const emptyForm: GuestForm = {
   invitation_sent: false,
   category: '',
   count: '1',
+  confirmed_count: '',
   address: '',
   gifted_amount: '0',
 };
 
 function itemToForm(item: GuestItem): GuestForm {
   return {
-    first_name: item.first_name,
-    last_name: item.last_name,
+    name: `${item.first_name} ${item.last_name}`.trim(),
     side: item.side,
     rsvp_status: item.rsvp_status,
     meal_preference: item.meal_preference,
@@ -182,6 +192,7 @@ function itemToForm(item: GuestItem): GuestForm {
     invitation_sent: item.invitation_sent,
     category: item.category,
     count: String(item.count),
+    confirmed_count: item.confirmed_count == null ? '' : String(item.confirmed_count),
     address: item.address,
     gifted_amount: String(item.gifted_amount),
   };
@@ -194,6 +205,7 @@ export default function ChurchGuestsPage() {
   const [addForm, setAddForm] = useState<GuestForm>(emptyForm);
   const [inlineEditId, setInlineEditId] = useState<string | null>(null);
   const [inlineForm, setInlineForm] = useState<GuestForm>(emptyForm);
+  const [copiedId, setCopiedId] = useState('');
   const [filterSide, setFilterSide] = useState<'all' | 'bride' | 'groom'>('all');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterRsvp, setFilterRsvp] = useState('');
@@ -217,35 +229,94 @@ export default function ChurchGuestsPage() {
 
   async function addGuest(e: React.FormEvent) {
     e.preventDefault();
-    await supabase.from('guest_items').insert({
-      first_name: addForm.first_name.trim(),
-      last_name: addForm.last_name.trim(),
+    const count = parseInt(addForm.count) || 1;
+    const row = {
+      first_name: addForm.name.trim(),
+      last_name: '',
       side: addForm.side,
       rsvp_status: addForm.rsvp_status,
       meal_preference: addForm.meal_preference.trim(),
       save_the_date_sent: addForm.save_the_date_sent,
       invitation_sent: addForm.invitation_sent,
       category: addForm.category,
-      count: parseInt(addForm.count) || 1,
+      count,
+      // Someone added as already-confirmed is assumed to be bringing their full allocation.
+      confirmed_count: addForm.rsvp_status === 'confirmed' ? count : null,
       address: addForm.address.trim(),
       gifted_amount: parseFloat(addForm.gifted_amount) || 0,
-    });
+    };
+
+    // invite_token is UNIQUE, so retry the (very unlikely) collision rather than failing the add.
+    for (let attempt = 0; ; attempt++) {
+      const { error } = await supabase
+        .from('guest_items')
+        .insert({ ...row, invite_token: generateInviteToken() });
+      if (!error) break;
+      if (error.code !== '23505' || attempt >= 2) {
+        alert(`Unable to add guest: ${error.message}`);
+        return;
+      }
+    }
+
     setAddForm(emptyForm);
     setShowForm(false);
     fetchItems();
   }
 
+  /** Backfill a token for rows created before the planner started issuing them. */
+  async function createInviteLink(item: GuestItem) {
+    for (let attempt = 0; ; attempt++) {
+      const { error } = await supabase
+        .from('guest_items')
+        .update({ invite_token: generateInviteToken() })
+        .eq('id', item.id);
+      if (!error) break;
+      if (error.code !== '23505' || attempt >= 2) {
+        alert(`Unable to create link: ${error.message}`);
+        return;
+      }
+    }
+    fetchItems();
+  }
+
+  async function copyInviteLink(item: GuestItem) {
+    const url = inviteUrl(item.first_name, item.last_name, item.invite_token);
+    if (!url) return;
+    await navigator.clipboard.writeText(url);
+    setCopiedId(item.id);
+    setTimeout(() => setCopiedId(''), 2000);
+  }
+
   async function saveInline(id: string) {
+    const count = parseInt(inlineForm.count) || 1;
+
+    // Attending only means anything for a confirmed guest, and it can never exceed the invite.
+    // Guarding here stops the count being dropped below a headcount the guest already confirmed —
+    // which would otherwise make the invitation site reject their own amendment.
+    let confirmedCount: number | null = null;
+    if (inlineForm.rsvp_status === 'confirmed') {
+      const parsed = parseInt(inlineForm.confirmed_count);
+      confirmedCount = Number.isNaN(parsed) ? count : parsed;
+      if (confirmedCount < 1 || confirmedCount > count) {
+        alert(
+          `Attending must be between 1 and the invited count (${count}).\n\n` +
+            `To invite fewer people than have already confirmed, lower Attending first.`
+        );
+        return;
+      }
+    }
+
     await supabase.from('guest_items').update({
-      first_name: inlineForm.first_name.trim(),
-      last_name: inlineForm.last_name.trim(),
+      first_name: inlineForm.name.trim(),
+      last_name: '',
       side: inlineForm.side,
       rsvp_status: inlineForm.rsvp_status,
       meal_preference: inlineForm.meal_preference.trim(),
       save_the_date_sent: inlineForm.save_the_date_sent,
       invitation_sent: inlineForm.invitation_sent,
       category: inlineForm.category,
-      count: parseInt(inlineForm.count) || 1,
+      count,
+      confirmed_count: confirmedCount,
       address: inlineForm.address.trim(),
       gifted_amount: parseFloat(inlineForm.gifted_amount) || 0,
     }).eq('id', id);
@@ -258,6 +329,10 @@ export default function ChurchGuestsPage() {
     await supabase.from('guest_items').delete().eq('id', id);
     fetchItems();
   }
+
+  // NEXT_PUBLIC_* is inlined at build time, so this is a constant for the deployed bundle.
+  const inviteBaseConfigured = Boolean(process.env.NEXT_PUBLIC_INVITE_URL);
+  const missingTokens = items.filter((i) => !i.invite_token).length;
 
   const brideItems = items.filter((i) => i.side === 'bride');
   const groomItems = items.filter((i) => i.side === 'groom');
@@ -357,6 +432,7 @@ export default function ChurchGuestsPage() {
     const current = opts.find((o) => o.value === inlineForm[field]) ?? null;
     return (
       <Select
+        instanceId={`inline-${field}`}
         options={opts}
         value={current}
         onChange={(opt: SingleValue<SelectOption>) => setInlineForm({ ...inlineForm, [field]: opt?.value ?? '' })}
@@ -408,6 +484,27 @@ export default function ChurchGuestsPage() {
           <Plus size={16} /> Add Guest
         </button>
       </div>
+
+      {!inviteBaseConfigured && (
+        <div className="card mb-6 border-amber-200 bg-amber-50/60">
+          <p className="text-sm text-warm-gray">
+            <span className="font-semibold text-gold">Invite links are disabled.</span>{' '}
+            Set <code className="text-xs">NEXT_PUBLIC_INVITE_URL</code> (the invitation site&apos;s
+            address) in this app&apos;s environment to copy personal links from here.
+          </p>
+        </div>
+      )}
+
+      {inviteBaseConfigured && missingTokens > 0 && (
+        <div className="card mb-6 border-amber-200 bg-amber-50/60">
+          <p className="text-sm text-warm-gray">
+            <span className="font-semibold text-gold">{missingTokens}</span> guest
+            {missingTokens === 1 ? ' has' : 's have'} no invite link yet. Use the{' '}
+            <Link2 size={13} className="inline text-warm-gray-light" /> button on their row to
+            create one.
+          </p>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
@@ -497,12 +594,14 @@ export default function ChurchGuestsPage() {
           <div className="w-px h-5 bg-ivory-dark mx-1" />
 
           <PillSelect
+            instanceId="filter-category"
             value={filterCategory}
             onChange={setFilterCategory}
             placeholder="All Categories"
             options={[{ value: '', label: 'All Categories' }, ...GUEST_CATEGORIES.map((c) => ({ value: c, label: c }))]}
           />
           <PillSelect
+            instanceId="filter-rsvp"
             value={filterRsvp}
             onChange={setFilterRsvp}
             placeholder="All RSVP"
@@ -514,6 +613,7 @@ export default function ChurchGuestsPage() {
             ]}
           />
           <PillSelect
+            instanceId="filter-save-date"
             value={filterSaveDate}
             onChange={setFilterSaveDate}
             placeholder="Save Date"
@@ -524,6 +624,7 @@ export default function ChurchGuestsPage() {
             ]}
           />
           <PillSelect
+            instanceId="filter-invite"
             value={filterInvite}
             onChange={setFilterInvite}
             placeholder="Invite"
@@ -565,13 +666,15 @@ export default function ChurchGuestsPage() {
           </div>
           <form onSubmit={addGuest}>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-warm-gray mb-1">First Name *</label>
-                <input type="text" required value={addForm.first_name} onChange={(e) => setAddForm({ ...addForm, first_name: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-warm-gray mb-1">Last Name</label>
-                <input type="text" value={addForm.last_name} onChange={(e) => setAddForm({ ...addForm, last_name: e.target.value })} />
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-warm-gray mb-1">Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={addForm.name}
+                  onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
+                  placeholder="e.g. Mr &amp; Mrs Abcd Fernando"
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-warm-gray mb-1">Side</label>
@@ -680,10 +783,7 @@ export default function ChurchGuestsPage() {
                       <>
                         <td className="px-3 py-2 min-w-[160px]">
                           <div className="flex flex-col gap-1">
-                            <div className="flex gap-1">
-                              {inlineInput('first_name', 'text', 'First name')}
-                              {inlineInput('last_name', 'text', 'Last name')}
-                            </div>
+                            {inlineInput('name', 'text', 'Name')}
                             {inlineInput('meal_preference', 'text', 'Meal preference')}
                           </div>
                         </td>
@@ -692,7 +792,13 @@ export default function ChurchGuestsPage() {
                         <td className="px-3 py-2 min-w-[60px]">{inlineInput('count', 'number')}</td>
                         <td className="px-3 py-2 min-w-[80px]">{inlineInput('gifted_amount', 'number')}</td>
                         <td className="px-3 py-2 min-w-[110px]">{inlineSelect('rsvp_status', ['pending', 'confirmed', 'declined'])}</td>
-                        <td className="px-3 py-2 text-center text-warm-gray-light text-xs">—</td>
+                        <td className="px-3 py-2 min-w-[70px]">
+                          {inlineForm.rsvp_status === 'confirmed' ? (
+                            inlineInput('confirmed_count', 'number', String(inlineForm.count))
+                          ) : (
+                            <span className="block text-center text-warm-gray-light text-xs">—</span>
+                          )}
+                        </td>
                         <td className="px-3 py-2 text-center">{inlineCheck('save_the_date_sent')}</td>
                         <td className="px-3 py-2 text-center">{inlineCheck('invitation_sent')}</td>
                         <td className="px-3 py-2 min-w-[80px]">{inlineSelect('side', ['bride', 'groom'])}</td>
@@ -716,7 +822,7 @@ export default function ChurchGuestsPage() {
                     ) : (
                       <>
                         <td className="px-4 py-3 font-medium text-warm-gray">
-                          {item.first_name} {item.last_name}
+                          {`${item.first_name} ${item.last_name}`.trim()}
                           {item.meal_preference && <span className="block text-xs text-warm-gray-light">{item.meal_preference}</span>}
                         </td>
                         <td className="px-4 py-3 text-warm-gray-light">{item.category || '—'}</td>
@@ -736,6 +842,32 @@ export default function ChurchGuestsPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2 justify-end">
+                            {item.invite_token ? (
+                              <button
+                                onClick={() => copyInviteLink(item)}
+                                disabled={!inviteBaseConfigured}
+                                title={
+                                  inviteBaseConfigured
+                                    ? 'Copy personal invitation link'
+                                    : 'Set NEXT_PUBLIC_INVITE_URL to enable invite links'
+                                }
+                                className="text-warm-gray-light hover:text-gold transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                              >
+                                {copiedId === item.id ? (
+                                  <Check size={14} className="text-green-600" />
+                                ) : (
+                                  <Copy size={14} />
+                                )}
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => createInviteLink(item)}
+                                title="No invite link yet — create one"
+                                className="text-warm-gray-light hover:text-gold transition-colors"
+                              >
+                                <Link2 size={14} />
+                              </button>
+                            )}
                             <button
                               onClick={() => { setInlineEditId(item.id); setInlineForm(itemToForm(item)); }}
                               className="text-warm-gray-light hover:text-gold transition-colors"

@@ -116,16 +116,20 @@ const PillDropdownIndicator = (props: DropdownIndicatorProps<SelectOption, false
   </components.DropdownIndicator>
 );
 
-function PillSelect({ value, options, onChange, placeholder }: {
+function PillSelect({ value, options, onChange, placeholder, instanceId }: {
   value: string;
   options: { value: string; label: string }[];
   onChange: (v: string) => void;
   placeholder: string;
+  /** Required: react-select numbers its DOM ids from a module counter, which lands on
+   *  different values during SSR and hydration. A stable id keeps the markup matching. */
+  instanceId: string;
 }) {
   const current = options.find((o) => o.value === value) ?? null;
   const active = !!value;
   return (
     <Select
+      instanceId={instanceId}
       options={options}
       value={current}
       onChange={(opt: SingleValue<SelectOption>) => onChange(opt?.value ?? '')}
@@ -187,16 +191,6 @@ function itemToForm(item: GuestItem): GuestForm {
   };
 }
 
-const CAPACITY = 70;
-
-const CAPACITY_ERRORS = [
-  "🍽️ The Cinnamon Grand called — they said \"absolutely not.\"",
-  "🚨 70 guests max! Are you planning a wedding or a festival?",
-  "😤 The venue has walls. Those walls hold exactly 70 people.",
-  "🪑 No more chairs. We checked. Twice.",
-  "🍰 There isn't enough wedding cake for that many people!",
-];
-
 export default function CinnamonGrandGuestsPage() {
   const [items, setItems] = useState<GuestItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -204,7 +198,6 @@ export default function CinnamonGrandGuestsPage() {
   const [addForm, setAddForm] = useState<GuestForm>(emptyForm);
   const [inlineEditId, setInlineEditId] = useState<string | null>(null);
   const [inlineForm, setInlineForm] = useState<GuestForm>(emptyForm);
-  const [capacityError, setCapacityError] = useState('');
   const [filterSide, setFilterSide] = useState<'all' | 'bride' | 'groom'>('all');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterRsvp, setFilterRsvp] = useState('');
@@ -228,13 +221,6 @@ export default function CinnamonGrandGuestsPage() {
 
   async function addGuest(e: React.FormEvent) {
     e.preventDefault();
-    const incoming = parseInt(addForm.count) || 1;
-    if (grandTotal + incoming > CAPACITY) {
-      const msg = CAPACITY_ERRORS[Math.floor(Math.random() * CAPACITY_ERRORS.length)];
-      setCapacityError(`${msg} (${grandTotal}/${CAPACITY} seats taken, you're trying to add ${incoming} more)`);
-      return;
-    }
-    setCapacityError('');
     await supabase.from('cinnamon_grand_guests').insert({
       first_name: addForm.first_name.trim(),
       last_name: addForm.last_name.trim(),
@@ -254,15 +240,6 @@ export default function CinnamonGrandGuestsPage() {
   }
 
   async function saveInline(id: string) {
-    const currentItem = items.find((i) => i.id === id);
-    const newCount = parseInt(inlineForm.count) || 1;
-    const projectedTotal = grandTotal - (currentItem?.count ?? 0) + newCount;
-    if (projectedTotal > CAPACITY) {
-      const msg = CAPACITY_ERRORS[Math.floor(Math.random() * CAPACITY_ERRORS.length)];
-      setCapacityError(`${msg} (that edit would bring the total to ${projectedTotal}/${CAPACITY})`);
-      return;
-    }
-    setCapacityError('');
     await supabase.from('cinnamon_grand_guests').update({
       first_name: inlineForm.first_name.trim(),
       last_name: inlineForm.last_name.trim(),
@@ -384,6 +361,7 @@ export default function CinnamonGrandGuestsPage() {
     const current = opts.find((o) => o.value === inlineForm[field]) ?? null;
     return (
       <Select
+        instanceId={`inline-${field}`}
         options={opts}
         value={current}
         onChange={(opt: SingleValue<SelectOption>) => setInlineForm({ ...inlineForm, [field]: opt?.value ?? '' })}
@@ -423,7 +401,6 @@ export default function CinnamonGrandGuestsPage() {
             const opening = !showForm;
             setShowForm(opening);
             setAddForm(emptyForm);
-            setCapacityError('');
             if (opening) {
               setTimeout(() => {
                 formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -483,15 +460,6 @@ export default function CinnamonGrandGuestsPage() {
         </div>
       </div>
 
-      {/* Capacity Error Banner */}
-      {capacityError && (
-        <div className="mb-4 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <span className="mt-0.5 shrink-0 text-base">🚫</span>
-          <span className="flex-1">{capacityError}</span>
-          <button onClick={() => setCapacityError('')} className="shrink-0 text-red-400 hover:text-red-600 transition-colors"><X size={14} /></button>
-        </div>
-      )}
-
       {/* Search + Filters */}
       <div className="card mb-6 p-4">
         {/* Search */}
@@ -532,12 +500,14 @@ export default function CinnamonGrandGuestsPage() {
           <div className="w-px h-5 bg-ivory-dark mx-1" />
 
           <PillSelect
+            instanceId="filter-category"
             value={filterCategory}
             onChange={setFilterCategory}
             placeholder="All Categories"
             options={[{ value: '', label: 'All Categories' }, ...GUEST_CATEGORIES.map((c) => ({ value: c, label: c }))]}
           />
           <PillSelect
+            instanceId="filter-rsvp"
             value={filterRsvp}
             onChange={setFilterRsvp}
             placeholder="All RSVP"
@@ -549,6 +519,7 @@ export default function CinnamonGrandGuestsPage() {
             ]}
           />
           <PillSelect
+            instanceId="filter-save-date"
             value={filterSaveDate}
             onChange={setFilterSaveDate}
             placeholder="Save Date"
@@ -559,6 +530,7 @@ export default function CinnamonGrandGuestsPage() {
             ]}
           />
           <PillSelect
+            instanceId="filter-invite"
             value={filterInvite}
             onChange={setFilterInvite}
             placeholder="Invite"
