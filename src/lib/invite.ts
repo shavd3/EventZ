@@ -23,6 +23,10 @@ function displayName(firstName: string, lastName: string): string {
   return [first, last].filter(Boolean).join(' ');
 }
 
+export function guestDisplayName(firstName: string, lastName: string): string {
+  return displayName(firstName, lastName);
+}
+
 function slugifyName(name: string): string {
   return (
     name
@@ -41,6 +45,21 @@ export function inviteUrl(firstName: string, lastName: string, token: string | n
   const base = process.env.NEXT_PUBLIC_INVITE_URL?.replace(/\/$/, '');
   if (!base || !token) return null;
   return `${base}/${inviteSlug(firstName, lastName, token)}`;
+}
+
+/** WhatsApp-ready invite text — keep in step with wedding-invite/src/lib/constants.ts. */
+export function buildInviteShareMessage(guestName: string, inviteUrl: string): string {
+  return [
+    'On behalf of our parents,',
+    `Dear ${guestName}`,
+    '',
+    "Our journey together wouldn't be complete without the people we treasure most. We would be deeply honored by your presence on our wedding day💍",
+    '',
+    'Please click on the link to view the invitation and submit your response.',
+    inviteUrl,
+    '',
+    'Kindly favour us with your response by the 20th of September✨',
+  ].join('\n');
 }
 
 /** Six hex characters, matching the format the SQL migration backfilled. */

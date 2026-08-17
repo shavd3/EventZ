@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { GuestItem, GUEST_CATEGORIES, attendingCount, invitedHeadcount } from '@/lib/types';
 import { Plus, Trash2, Edit2, X, Check, Search, ChevronsUpDown, ChevronUp, ChevronDown, Copy, Link2 } from 'lucide-react';
-import { inviteUrl, generateInviteToken } from '@/lib/invite';
+import { inviteUrl, generateInviteToken, guestDisplayName, buildInviteShareMessage } from '@/lib/invite';
 import Dropdown from '@/components/Dropdown';
 import Select, { StylesConfig, SingleValue, components, DropdownIndicatorProps } from 'react-select';
 import { ChevronDown as ChevronDownIcon } from 'lucide-react';
@@ -282,7 +282,11 @@ export default function ChurchGuestsPage() {
   async function copyInviteLink(item: GuestItem) {
     const url = inviteUrl(item.first_name, item.last_name, item.invite_token);
     if (!url) return;
-    await navigator.clipboard.writeText(url);
+    const message = buildInviteShareMessage(
+      guestDisplayName(item.first_name, item.last_name),
+      url
+    );
+    await navigator.clipboard.writeText(message);
     setCopiedId(item.id);
     setTimeout(() => setCopiedId(''), 2000);
   }
@@ -848,7 +852,7 @@ export default function ChurchGuestsPage() {
                                 disabled={!inviteBaseConfigured}
                                 title={
                                   inviteBaseConfigured
-                                    ? 'Copy personal invitation link'
+                                    ? 'Copy invite message with personal link'
                                     : 'Set NEXT_PUBLIC_INVITE_URL to enable invite links'
                                 }
                                 className="text-warm-gray-light hover:text-gold transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
