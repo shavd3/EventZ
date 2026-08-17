@@ -752,7 +752,7 @@ export default function ChurchGuestsPage() {
             <thead>
               <tr className="border-b border-ivory-dark">
                 {([
-                  { label: 'Name', field: 'first_name' as keyof GuestItem, align: 'left' },
+                  { label: 'Name', field: 'first_name' as keyof GuestItem, align: 'left', sticky: true },
                   { label: 'Category', field: 'category' as keyof GuestItem, align: 'left' },
                   { label: 'Address', field: 'address' as keyof GuestItem, align: 'left' },
                   { label: 'Invited', field: 'count' as keyof GuestItem, align: 'center' },
@@ -762,21 +762,26 @@ export default function ChurchGuestsPage() {
                   { label: 'Save Date', field: 'save_the_date_sent' as keyof GuestItem, align: 'center' },
                   { label: 'Invite', field: 'invitation_sent' as keyof GuestItem, align: 'center' },
                   { label: 'Side', field: 'side' as keyof GuestItem, align: 'left' },
-                ]).map(({ label, field, align }) => (
+                ]).map(({ label, field, align, sticky }) => (
                   <th
                     key={field}
                     onClick={() => toggleSort(field)}
-                    className={`px-4 py-3 text-xs font-semibold text-warm-gray-light uppercase tracking-wide cursor-pointer hover:text-gold select-none transition-colors text-${align}`}
+                    className={`px-4 py-3 text-xs font-semibold text-warm-gray-light uppercase tracking-wide cursor-pointer hover:text-gold select-none transition-colors text-${align}${
+                      sticky
+                        ? ' sticky left-0 z-20 bg-ivory min-w-[11rem] shadow-[2px_0_6px_-2px_rgba(0,0,0,0.08)]'
+                        : ''
+                    }`}
                   >
                     {label}<SortIcon field={field} />
                   </th>
                 ))}
-                <th className="px-4 py-3" />
+                <th className="px-4 py-3 hidden md:table-cell" />
               </tr>
             </thead>
             <tbody>
               {filteredItems.map((item, i) => {
                 const isEditing = inlineEditId === item.id;
+                const rowBg = isEditing ? 'bg-amber-50' : i % 2 === 0 ? 'bg-white' : 'bg-ivory';
                 return (
                   <tr
                     key={item.id}
@@ -851,9 +856,60 @@ export default function ChurchGuestsPage() {
                       </td>
                     ) : (
                       <>
-                        <td className="px-4 py-3 font-medium text-warm-gray">
-                          {`${item.first_name} ${item.last_name}`.trim()}
-                          {item.meal_preference && <span className="block text-xs text-warm-gray-light">{item.meal_preference}</span>}
+                        <td
+                          className={`px-3 py-3 sticky left-0 z-10 min-w-[11rem] max-w-[14rem] shadow-[2px_0_6px_-2px_rgba(0,0,0,0.08)] ${rowBg}`}
+                        >
+                          <div className="font-medium text-warm-gray leading-snug">
+                            {`${item.first_name} ${item.last_name}`.trim()}
+                          </div>
+                          {item.meal_preference && (
+                            <span className="block text-xs text-warm-gray-light mt-0.5">{item.meal_preference}</span>
+                          )}
+                          <div className="flex items-center gap-1 mt-2 md:hidden">
+                            {item.invite_token ? (
+                              <button
+                                type="button"
+                                onClick={() => copyInviteLink(item)}
+                                disabled={!inviteBaseConfigured}
+                                title="Copy invite message"
+                                className="p-2 rounded-md bg-ivory-dark/40 text-warm-gray hover:text-gold"
+                              >
+                                {copiedId === item.id ? (
+                                  <Check size={16} className="text-green-600" />
+                                ) : (
+                                  <Copy size={16} />
+                                )}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => createInviteLink(item)}
+                                title="Create invite link"
+                                className="p-2 rounded-md bg-ivory-dark/40 text-warm-gray hover:text-gold"
+                              >
+                                <Link2 size={16} />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setInlineEditId(item.id);
+                                setInlineForm(itemToForm(item));
+                              }}
+                              title="Edit guest"
+                              className="p-2 rounded-md bg-gold/15 text-gold hover:bg-gold/25"
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteItem(item.id)}
+                              title="Delete guest"
+                              className="p-2 rounded-md bg-ivory-dark/40 text-warm-gray-light hover:text-red-500"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-warm-gray-light">{item.category || '—'}</td>
                         <td className="px-4 py-3 text-warm-gray-light max-w-[160px] truncate">{item.address || '—'}</td>
@@ -870,7 +926,7 @@ export default function ChurchGuestsPage() {
                             {item.side === 'bride' ? "Bride's" : "Groom's"}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 hidden md:table-cell">
                           <div className="flex items-center gap-2 justify-end">
                             {item.invite_token ? (
                               <button
