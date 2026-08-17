@@ -419,7 +419,7 @@ export default function ChurchGuestsPage() {
       : <span className="text-warm-gray-light text-xs">No</span>;
   }
 
-  const iStyle = "w-full px-2 py-1.5 text-xs border border-[#e0d8d0] rounded-md bg-white text-[#3d3530] focus:outline-none focus:border-gold focus:shadow-[0_0_0_2px_rgba(184,134,11,0.12)] transition-colors";
+  const iStyle = "w-full px-3 py-2.5 text-base sm:text-sm border border-[#e0d8d0] rounded-md bg-white text-[#3d3530] focus:outline-none focus:border-gold focus:shadow-[0_0_0_2px_rgba(184,134,11,0.12)] transition-colors";
 
   const inlineInput = (field: keyof GuestForm, type = 'text', placeholder = '') => (
     <input
@@ -448,16 +448,16 @@ export default function ChurchGuestsPage() {
     );
   };
 
-  const inlineCheck = (field: 'save_the_date_sent' | 'invitation_sent') => (
-    <label className="flex flex-col items-center gap-1 cursor-pointer">
+  const inlineCheck = (field: 'save_the_date_sent' | 'invitation_sent', label: string) => (
+    <label className="flex items-center gap-2 cursor-pointer py-1">
       <input
         type="checkbox"
         checked={inlineForm[field]}
         onChange={(e) => setInlineForm({ ...inlineForm, [field]: e.target.checked })}
-        className="w-4 h-4 accent-gold"
+        className="w-5 h-5 accent-gold shrink-0"
       />
-      <span className={`text-[10px] font-medium ${inlineForm[field] ? 'text-green-700' : 'text-warm-gray-light'}`}>
-        {inlineForm[field] ? 'Yes' : 'No'}
+      <span className={`text-sm font-medium ${inlineForm[field] ? 'text-green-700' : 'text-warm-gray'}`}>
+        {label}
       </span>
     </label>
   );
@@ -784,45 +784,71 @@ export default function ChurchGuestsPage() {
                     style={isEditing ? { boxShadow: 'inset 3px 0 0 #b8860b' } : {}}
                   >
                     {isEditing ? (
-                      <>
-                        <td className="px-3 py-2 min-w-[160px]">
-                          <div className="flex flex-col gap-1">
-                            {inlineInput('name', 'text', 'Name')}
-                            {inlineInput('meal_preference', 'text', 'Meal preference')}
+                      <td colSpan={11} className="px-4 py-4">
+                        <div className="max-w-2xl mx-auto space-y-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-gold">Edit guest</p>
+                          <div>
+                            <label className="block text-xs font-medium text-warm-gray mb-1">Name</label>
+                            {inlineInput('name', 'text', 'Full name')}
                           </div>
-                        </td>
-                        <td className="px-3 py-2 min-w-[120px]">{inlineSelect('category', ['', ...GUEST_CATEGORIES])}</td>
-                        <td className="px-3 py-2 min-w-[130px]">{inlineInput('address', 'text', 'Address')}</td>
-                        <td className="px-3 py-2 min-w-[60px]">{inlineInput('count', 'number')}</td>
-                        <td className="px-3 py-2 min-w-[80px]">{inlineInput('gifted_amount', 'number')}</td>
-                        <td className="px-3 py-2 min-w-[110px]">{inlineSelect('rsvp_status', ['pending', 'confirmed', 'declined'])}</td>
-                        <td className="px-3 py-2 min-w-[70px]">
-                          {inlineForm.rsvp_status === 'confirmed' ? (
-                            inlineInput('confirmed_count', 'number', String(inlineForm.count))
-                          ) : (
-                            <span className="block text-center text-warm-gray-light text-xs">—</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-center">{inlineCheck('save_the_date_sent')}</td>
-                        <td className="px-3 py-2 text-center">{inlineCheck('invitation_sent')}</td>
-                        <td className="px-3 py-2 min-w-[80px]">{inlineSelect('side', ['bride', 'groom'])}</td>
-                        <td className="px-3 py-2">
-                          <div className="flex flex-col gap-1.5 items-end">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-warm-gray mb-1">Category</label>
+                              {inlineSelect('category', ['', ...GUEST_CATEGORIES])}
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-warm-gray mb-1">Side</label>
+                              {inlineSelect('side', ['bride', 'groom'])}
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-warm-gray mb-1">RSVP</label>
+                              {inlineSelect('rsvp_status', ['pending', 'confirmed', 'declined'])}
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-warm-gray mb-1">Invited count</label>
+                              {inlineInput('count', 'number')}
+                            </div>
+                            {inlineForm.rsvp_status === 'confirmed' && (
+                              <div>
+                                <label className="block text-xs font-medium text-warm-gray mb-1">Attending</label>
+                                {inlineInput('confirmed_count', 'number', String(inlineForm.count))}
+                              </div>
+                            )}
+                            <div>
+                              <label className="block text-xs font-medium text-warm-gray mb-1">Gifted (Rs.)</label>
+                              {inlineInput('gifted_amount', 'number')}
+                            </div>
+                            <div className="sm:col-span-2">
+                              <label className="block text-xs font-medium text-warm-gray mb-1">Address</label>
+                              {inlineInput('address', 'text', 'Address')}
+                            </div>
+                            <div className="sm:col-span-2">
+                              <label className="block text-xs font-medium text-warm-gray mb-1">Meal preference</label>
+                              {inlineInput('meal_preference', 'text', 'Meal preference')}
+                            </div>
+                          </div>
+                          <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                            {inlineCheck('save_the_date_sent', 'Save the Date sent')}
+                            {inlineCheck('invitation_sent', 'Invitation sent')}
+                          </div>
+                          <div className="flex gap-3 pt-2 sticky bottom-0 bg-amber-50/95 py-2 -mx-1 px-1">
                             <button
+                              type="button"
                               onClick={() => saveInline(item.id)}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-gold text-white text-xs font-medium hover:bg-gold-dark transition-colors"
+                              className="flex-1 flex items-center justify-center gap-1.5 px-4 py-3 rounded-md bg-gold text-white text-sm font-medium hover:bg-gold-dark transition-colors"
                             >
-                              <Check size={11} /> Save
+                              <Check size={16} /> Save
                             </button>
                             <button
+                              type="button"
                               onClick={() => setInlineEditId(null)}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-md border border-ivory-dark text-warm-gray-light text-xs font-medium hover:border-red-300 hover:text-red-500 transition-colors"
+                              className="flex-1 flex items-center justify-center gap-1.5 px-4 py-3 rounded-md border border-ivory-dark text-warm-gray text-sm font-medium hover:border-red-300 hover:text-red-500 transition-colors bg-white"
                             >
-                              <X size={11} /> Cancel
+                              <X size={16} /> Cancel
                             </button>
                           </div>
-                        </td>
-                      </>
+                        </div>
+                      </td>
                     ) : (
                       <>
                         <td className="px-4 py-3 font-medium text-warm-gray">
