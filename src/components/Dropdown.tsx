@@ -46,6 +46,8 @@ const dropdownStyles: StylesConfig<Option, false> = {
     zIndex: 9999,
   }),
   menuList: (base) => ({ ...base, padding: 4 }),
+  // Menus portal into <body>; without this they'd stack under the z-50 guest modal overlay.
+  menuPortal: (base) => ({ ...base, zIndex: 9999 }),
   option: (base, state) => ({
     ...base,
     fontSize: '0.875rem',

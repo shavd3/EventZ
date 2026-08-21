@@ -135,3 +135,19 @@ input:focus, select:focus, textarea:focus {
   background: #fee2e2;
   color: #991b1b;
 }
+
+/* Guest add/edit modal: 16px inputs on phones so iOS doesn't zoom the page on focus.
+   (The global input rule above is unlayered, so a Tailwind text-base utility can't override it.) */
+.guest-modal input[type="text"],
+.guest-modal input[type="number"] {
+  font-size: 1rem;
+  padding: 0.625rem 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .guest-modal input[type="text"],
+  .guest-modal input[type="number"] {
+    font-size: 0.875rem;
+    padding: 0.5rem 0.75rem;
+  }
+}
