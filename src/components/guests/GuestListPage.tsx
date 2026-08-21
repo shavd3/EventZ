@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { GuestItem, GUEST_CATEGORIES, attendingCount, invitedHeadcount } from '@/lib/types';
 import {
-  Plus, Trash2, Edit2, X, Check, Search, Send,
+  Plus, Trash2, Edit2, X, Check, Search, Send, Phone,
   ChevronsUpDown, ChevronUp, ChevronDown, Copy, Link2,
 } from 'lucide-react';
 import { inviteUrl, generateInviteToken, guestDisplayName, buildInviteShareMessage } from '@/lib/invite';
@@ -170,6 +170,7 @@ export default function GuestListPage({ variant }: { variant: 'church' | 'cinnam
   const [form, setForm] = useState<GuestFormState>(emptyForm);
   const [copiedId, setCopiedId] = useState('');
   const [inviteBusyId, setInviteBusyId] = useState('');
+  const [rsvpBusyId, setRsvpBusyId] = useState('');
   const [filterSide, setFilterSide] = useState<'all' | 'bride' | 'groom'>('all');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterRsvp, setFilterRsvp] = useState('');
@@ -274,6 +275,23 @@ export default function GuestListPage({ variant }: { variant: 'church' | 'cinnam
     if (error) {
       setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, invitation_sent: !next } : i)));
       alert(`Unable to update invitation status: ${error.message}`);
+    }
+  }
+
+  /**
+   * Cinnamon Grand invitations happen over the phone, so confirming is a one-tap action there.
+   * The table has no confirmed_count — a confirmed row counts its full `count` as attending.
+   */
+  async function toggleConfirmed(item: GuestItem) {
+    const next: GuestItem['rsvp_status'] = item.rsvp_status === 'confirmed' ? 'pending' : 'confirmed';
+    const prevStatus = item.rsvp_status;
+    setRsvpBusyId(item.id);
+    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, rsvp_status: next } : i)));
+    const { error } = await supabase.from(table).update({ rsvp_status: next }).eq('id', item.id);
+    setRsvpBusyId('');
+    if (error) {
+      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, rsvp_status: prevStatus } : i)));
+      alert(`Unable to update RSVP: ${error.message}`);
     }
   }
 
@@ -413,6 +431,30 @@ export default function GuestListPage({ variant }: { variant: 'church' | 'cinnam
       >
         {sent ? <Check size={13} /> : <Send size={13} />}
         {sent ? (size === 'card' ? 'Invite sent' : 'Sent') : 'Mark sent'}
+      </button>
+    );
+  }
+
+  /** CG only: tappable RSVP — pending shows a Confirm button, confirmed undoes, declined stays a badge. */
+  function confirmToggle(item: GuestItem, size: 'table' | 'card') {
+    if (item.rsvp_status === 'declined') return rsvpBadge('declined');
+    const confirmed = item.rsvp_status === 'confirmed';
+    const busy = rsvpBusyId === item.id;
+    const sizing = size === 'card' ? 'px-3.5 py-2 text-xs' : 'px-2.5 py-1 text-xs';
+    return (
+      <button
+        type="button"
+        onClick={() => toggleConfirmed(item)}
+        disabled={busy}
+        title={confirmed ? 'Confirmed — tap to undo' : 'Confirmed over the phone? Tap to mark'}
+        className={`inline-flex items-center gap-1.5 rounded-full font-semibold whitespace-nowrap transition-colors disabled:opacity-50 ${sizing} ${
+          confirmed
+            ? 'bg-green-100 text-green-700 hover:bg-green-200'
+            : 'bg-white border-[1.5px] border-green-600/40 text-green-700 hover:bg-green-50'
+        }`}
+      >
+        {confirmed ? <Check size={13} /> : <Phone size={13} />}
+        {confirmed ? 'Confirmed' : 'Confirm'}
       </button>
     );
   }
@@ -661,6 +703,7 @@ export default function GuestListPage({ variant }: { variant: 'church' | 'cinnam
                   {item.gifted_amount > 0 && <> · {formatLKR(Number(item.gifted_amount))}</>}
                 </p>
                 <div className="flex items-center gap-2 mt-3 pt-3 border-t border-ivory-dark">
+                  {!isChurch && item.rsvp_status !== 'declined' && confirmToggle(item, 'card')}
                   {inviteToggle(item, 'card')}
                   <div className="ml-auto flex items-center gap-1.5">
                     {isChurch && copyOrCreateButton(item, 17, true)}
@@ -721,7 +764,9 @@ export default function GuestListPage({ variant }: { variant: 'church' | 'cinnam
                     <td className="px-4 py-3 text-right text-warm-gray whitespace-nowrap">
                       {item.gifted_amount > 0 ? formatLKR(Number(item.gifted_amount)) : '—'}
                     </td>
-                    <td className="px-4 py-3">{rsvpBadge(item.rsvp_status)}</td>
+                    <td className="px-4 py-3">
+                      {isChurch ? rsvpBadge(item.rsvp_status) : confirmToggle(item, 'table')}
+                    </td>
                     {isChurch && (
                       <td className="px-4 py-3 text-center font-semibold text-warm-gray">
                         {item.rsvp_status === 'confirmed' ? (item.confirmed_count ?? item.count) : '—'}
