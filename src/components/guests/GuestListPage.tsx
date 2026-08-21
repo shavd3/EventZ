@@ -527,7 +527,7 @@ export default function GuestListPage({ variant }: { variant: 'church' | 'cinnam
   const columns: { label: string; field: keyof GuestItem; align: keyof typeof alignClass }[] = [
     { label: 'Name', field: 'first_name', align: 'left' },
     { label: isChurch ? 'Invited' : 'Count', field: 'count', align: 'center' },
-    { label: 'Gifted', field: 'gifted_amount', align: 'right' },
+    ...(isChurch ? [{ label: 'Gifted', field: 'gifted_amount' as keyof GuestItem, align: 'right' as const }] : []),
     { label: 'RSVP', field: 'rsvp_status', align: 'left' },
     ...(isChurch ? [{ label: 'Attending', field: 'confirmed_count' as keyof GuestItem, align: 'center' as const }] : []),
     { label: 'Invite', field: 'invitation_sent', align: 'center' },
@@ -726,7 +726,7 @@ export default function GuestListPage({ variant }: { variant: 'church' | 'cinnam
                   {isChurch && item.rsvp_status === 'confirmed' && (
                     <> · {attendingCount(item)} attending</>
                   )}
-                  {item.gifted_amount > 0 && <> · {formatLKR(Number(item.gifted_amount))}</>}
+                  {isChurch && item.gifted_amount > 0 && <> · {formatLKR(Number(item.gifted_amount))}</>}
                 </p>
                 <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-ivory-dark">
                   {!isChurch && confirmToggle(item, 'card')}
@@ -787,9 +787,11 @@ export default function GuestListPage({ variant }: { variant: 'church' | 'cinnam
                       )}
                     </td>
                     <td className="px-4 py-3 text-center font-semibold text-warm-gray">{item.count}</td>
-                    <td className="px-4 py-3 text-right text-warm-gray whitespace-nowrap">
-                      {item.gifted_amount > 0 ? formatLKR(Number(item.gifted_amount)) : '—'}
-                    </td>
+                    {isChurch && (
+                      <td className="px-4 py-3 text-right text-warm-gray whitespace-nowrap">
+                        {item.gifted_amount > 0 ? formatLKR(Number(item.gifted_amount)) : '—'}
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       {isChurch ? rsvpBadge(item.rsvp_status) : confirmToggle(item, 'table')}
                     </td>
