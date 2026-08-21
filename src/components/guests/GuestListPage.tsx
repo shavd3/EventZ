@@ -279,11 +279,10 @@ export default function GuestListPage({ variant }: { variant: 'church' | 'cinnam
   }
 
   /**
-   * Cinnamon Grand invitations happen over the phone, so confirming is a one-tap action there.
+   * Cinnamon Grand invitations happen over the phone, so RSVP is a one-tap action there.
    * The table has no confirmed_count — a confirmed row counts its full `count` as attending.
    */
-  async function toggleConfirmed(item: GuestItem) {
-    const next: GuestItem['rsvp_status'] = item.rsvp_status === 'confirmed' ? 'pending' : 'confirmed';
+  async function updateRsvp(item: GuestItem, next: GuestItem['rsvp_status']) {
     const prevStatus = item.rsvp_status;
     setRsvpBusyId(item.id);
     setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, rsvp_status: next } : i)));
@@ -435,27 +434,54 @@ export default function GuestListPage({ variant }: { variant: 'church' | 'cinnam
     );
   }
 
-  /** CG only: tappable RSVP — pending shows a Confirm button, confirmed undoes, declined stays a badge. */
+  /** CG only: tappable RSVP — Confirm or a small ✗ to decline; the current state taps back to pending. */
   function confirmToggle(item: GuestItem, size: 'table' | 'card') {
-    if (item.rsvp_status === 'declined') return rsvpBadge('declined');
-    const confirmed = item.rsvp_status === 'confirmed';
     const busy = rsvpBusyId === item.id;
     const sizing = size === 'card' ? 'px-3.5 py-2 text-xs' : 'px-2.5 py-1 text-xs';
+    const pill = 'inline-flex items-center gap-1.5 rounded-full font-semibold whitespace-nowrap transition-colors disabled:opacity-50';
+
+    if (item.rsvp_status === 'declined') {
+      return (
+        <button
+          type="button"
+          onClick={() => updateRsvp(item, 'pending')}
+          disabled={busy}
+          title="Declined — tap to undo"
+          className={`${pill} ${sizing} bg-red-100 text-red-700 hover:bg-red-200`}
+        >
+          <X size={13} /> Declined
+        </button>
+      );
+    }
+
+    const confirmed = item.rsvp_status === 'confirmed';
     return (
-      <button
-        type="button"
-        onClick={() => toggleConfirmed(item)}
-        disabled={busy}
-        title={confirmed ? 'Confirmed — tap to undo' : 'Confirmed over the phone? Tap to mark'}
-        className={`inline-flex items-center gap-1.5 rounded-full font-semibold whitespace-nowrap transition-colors disabled:opacity-50 ${sizing} ${
-          confirmed
-            ? 'bg-green-100 text-green-700 hover:bg-green-200'
-            : 'bg-white border-[1.5px] border-green-600/40 text-green-700 hover:bg-green-50'
-        }`}
-      >
-        {confirmed ? <Check size={13} /> : <Phone size={13} />}
-        {confirmed ? 'Confirmed' : 'Confirm'}
-      </button>
+      <span className="inline-flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => updateRsvp(item, confirmed ? 'pending' : 'confirmed')}
+          disabled={busy}
+          title={confirmed ? 'Confirmed — tap to undo' : 'Confirmed over the phone? Tap to mark'}
+          className={`${pill} ${sizing} ${
+            confirmed
+              ? 'bg-green-100 text-green-700 hover:bg-green-200'
+              : 'bg-white border-[1.5px] border-green-600/40 text-green-700 hover:bg-green-50'
+          }`}
+        >
+          {confirmed ? <Check size={13} /> : <Phone size={13} />}
+          {confirmed ? 'Confirmed' : 'Confirm'}
+        </button>
+        <button
+          type="button"
+          onClick={() => updateRsvp(item, 'declined')}
+          disabled={busy}
+          title="Declined over the phone? Tap to mark"
+          aria-label="Mark as declined"
+          className={`rounded-full border-[1.5px] border-red-200 bg-white text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 ${size === 'card' ? 'p-2' : 'p-1'}`}
+        >
+          <X size={size === 'card' ? 14 : 12} />
+        </button>
+      </span>
     );
   }
 
@@ -702,8 +728,8 @@ export default function GuestListPage({ variant }: { variant: 'church' | 'cinnam
                   )}
                   {item.gifted_amount > 0 && <> · {formatLKR(Number(item.gifted_amount))}</>}
                 </p>
-                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-ivory-dark">
-                  {!isChurch && item.rsvp_status !== 'declined' && confirmToggle(item, 'card')}
+                <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-ivory-dark">
+                  {!isChurch && confirmToggle(item, 'card')}
                   {inviteToggle(item, 'card')}
                   <div className="ml-auto flex items-center gap-1.5">
                     {isChurch && copyOrCreateButton(item, 17, true)}
