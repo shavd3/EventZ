@@ -684,6 +684,42 @@ export default function GuestListPage({ variant }: { variant: 'church' | 'cinnam
           )}
         </div>
 
+        {/* Sort — phones only; the table headers cover sorting on desktop */}
+        <div className="flex items-center gap-2 mt-3 md:hidden">
+          <span className="text-xs font-medium text-warm-gray-light">Sort</span>
+          <PillSelect
+            instanceId="sort-field"
+            value={sortField ?? ''}
+            onChange={(v) => setSortField(v ? (v as keyof GuestItem) : null)}
+            placeholder="Sort"
+            options={[
+              { value: '', label: 'Default order' },
+              { value: 'first_name', label: 'Name' },
+              { value: 'count', label: isChurch ? 'Invited' : 'Count' },
+              ...(isChurch
+                ? [
+                    { value: 'gifted_amount', label: 'Gifted' },
+                    { value: 'confirmed_count', label: 'Attending' },
+                  ]
+                : []),
+              { value: 'rsvp_status', label: 'RSVP' },
+              { value: 'invitation_sent', label: 'Invite sent' },
+              { value: 'side', label: 'Side' },
+            ]}
+          />
+          {sortField && (
+            <button
+              type="button"
+              onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
+              title={sortDir === 'asc' ? 'Ascending — tap for descending' : 'Descending — tap for ascending'}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold border-[1.5px] border-gold/50 text-gold bg-gold/10 transition-colors"
+            >
+              {sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              {sortDir === 'asc' ? 'Asc' : 'Desc'}
+            </button>
+          )}
+        </div>
+
         {/* Results count */}
         <p className="text-xs text-warm-gray-light mt-2">
           Showing {filteredItems.length} of {items.length} entries
