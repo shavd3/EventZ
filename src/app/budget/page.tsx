@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import { BudgetItem, PaymentMethod } from '@/lib/types';
-import { Plus, Trash2, Edit2, X } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, Search, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import Dropdown from '@/components/Dropdown';
 
 function formatLKR(amount: number) {
@@ -36,6 +36,105 @@ function derivedTotal(pax: number | null, price: number | null): number | null {
 
 function effectiveTotal(item: BudgetItem): number {
   return derivedTotal(moneyOrNull(item.pax_count), moneyOrNull(item.price_per_pax)) ?? Number(item.total_expense);
+}
+
+function remainingOf(item: BudgetItem): number {
+  return effectiveTotal(item) - Number(item.advance_paid);
+}
+
+function diffOf(item: BudgetItem): number | null {
+  const expected = moneyOrNull(item.expected_budget);
+  if (expected == null) return null;
+  return effectiveTotal(item) - expected;
+}
+
+type BudgetSortField =
+  | 'category'
+  | 'vendor'
+  | 'expected'
+  | 'total'
+  | 'diff'
+  | 'pax'
+  | 'per_pax'
+  | 'advance'
+  | 'advance_date'
+  | 'remaining'
+  | 'due_date'
+  | 'payment'
+  | 'status'
+  | 'assignee'
+  | 'side';
+
+type PayFilter = '' | 'owing' | 'not_paid' | 'advance_paid' | 'settled';
+
+const SORT_OPTIONS: { value: BudgetSortField | ''; label: string }[] = [
+  { value: '', label: 'Default order' },
+  { value: 'category', label: 'Category' },
+  { value: 'vendor', label: 'Vendor' },
+  { value: 'expected', label: 'Expected' },
+  { value: 'total', label: 'Total' },
+  { value: 'diff', label: 'Diff' },
+  { value: 'pax', label: 'Pax' },
+  { value: 'per_pax', label: 'Per pax' },
+  { value: 'advance', label: 'Advance' },
+  { value: 'advance_date', label: 'Advance date' },
+  { value: 'remaining', label: 'Remaining' },
+  { value: 'due_date', label: 'Due date' },
+  { value: 'payment', label: 'Payment' },
+  { value: 'status', label: 'Status' },
+  { value: 'assignee', label: 'Assignee' },
+  { value: 'side', label: 'Side' },
+];
+
+function sortValue(item: BudgetItem, field: BudgetSortField): string | number | null {
+  switch (field) {
+    case 'category':
+      return item.category.toLowerCase();
+    case 'vendor':
+      return item.vendor.toLowerCase();
+    case 'expected':
+      return moneyOrNull(item.expected_budget);
+    case 'total':
+      return effectiveTotal(item);
+    case 'diff':
+      return diffOf(item);
+    case 'pax':
+      return moneyOrNull(item.pax_count);
+    case 'per_pax':
+      return moneyOrNull(item.price_per_pax);
+    case 'advance':
+      return Number(item.advance_paid);
+    case 'advance_date':
+      return item.advance_date || null;
+    case 'remaining':
+      return remainingOf(item);
+    case 'due_date':
+      return item.due_date || null;
+    case 'payment':
+      return paymentLabel(item.payment_method).toLowerCase();
+    case 'status':
+      return item.status;
+    case 'assignee':
+      return (item.assignee || '').toLowerCase();
+    case 'side':
+      return item.side;
+  }
+}
+
+function payFilterLabel(value: PayFilter): string {
+  if (value === 'owing') return 'To be paid';
+  if (value === 'not_paid') return 'Not paid';
+  if (value === 'advance_paid') return 'Advance paid';
+  if (value === 'settled') return 'Settled';
+  return 'All payments';
+}
+
+function payFilterValue(label: string): PayFilter {
+  if (label === 'To be paid') return 'owing';
+  if (label === 'Not paid') return 'not_paid';
+  if (label === 'Advance paid') return 'advance_paid';
+  if (label === 'Settled') return 'settled';
+  return '';
 }
 
 type BudgetForm = {
@@ -417,6 +516,11 @@ export default function BudgetPage() {
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(true);
   const [filterSide, setFilterSide] = useState<'all' | 'bride' | 'groom'>('all');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterPay, setFilterPay] = useState<PayFilter>('');
+  const [search, setSearch] = useState('');
+  const [sortField, setSortField] = useState<BudgetSortField | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [active, setActive] = useState<{ id: string; field: EditableField } | null>(null);
   const [draft, setDraft] = useState('');
   const formRef = useRef<HTMLDivElement>(null);
@@ -603,7 +707,64 @@ export default function BudgetPage() {
     goTo(active, dir);
   }
 
-  const filteredItems = filterSide === 'all' ? items : items.filter((i) => i.side === filterSide);
+  const filteredItems = (() => {
+    let result = [...items];
+    const query = search.trim().toLowerCase();
+    if (query) {
+      result = result.filter((item) =>
+        [item.category, item.vendor, item.assignee, item.notes, paymentLabel(item.payment_method)]
+          .join(' ')
+          .toLowerCase()
+          .includes(query),
+      );
+    }
+    if (filterSide !== 'all') result = result.filter((item) => item.side === filterSide);
+    if (filterCategory) result = result.filter((item) => item.category === filterCategory);
+    if (filterPay === 'owing') result = result.filter((item) => remainingOf(item) > 0.004);
+    else if (filterPay) result = result.filter((item) => item.status === filterPay);
+    if (sortField) {
+      const field = sortField;
+      result.sort((a, b) => {
+        const av = sortValue(a, field);
+        const bv = sortValue(b, field);
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv));
+        return sortDir === 'asc' ? cmp : -cmp;
+      });
+    }
+    return result;
+  })();
+
+  function toggleSort(field: BudgetSortField) {
+    if (sortField === field) setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+  }
+
+  function SortHeading({ field, label, align, title }: { field: BudgetSortField; label: string; align: 'left' | 'right' | 'center'; title?: string }) {
+    const icon = sortField !== field
+      ? <ChevronsUpDown size={12} className="text-warm-gray-light/50" />
+      : sortDir === 'asc'
+        ? <ChevronUp size={12} className="text-gold" />
+        : <ChevronDown size={12} className="text-gold" />;
+    return (
+      <th className={`py-3 px-2 text-xs font-semibold uppercase tracking-wider ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'}`} title={title}>
+        <button
+          type="button"
+          onClick={() => toggleSort(field)}
+          className="inline-flex items-center gap-1 uppercase tracking-wider text-warm-gray hover:text-gold"
+          style={{ background: 'transparent', border: 0, padding: 0, cursor: 'pointer', font: 'inherit', letterSpacing: 'inherit' }}
+        >
+          {label}
+          {icon}
+        </button>
+      </th>
+    );
+  }
 
   const brideItems = items.filter((i) => i.side === 'bride');
   const groomItems = items.filter((i) => i.side === 'groom');
@@ -667,7 +828,11 @@ export default function BudgetPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gold">Budget</h1>
-          <p className="text-warm-gray-light text-sm mt-1">{items.length} expenses tracked</p>
+          <p className="text-warm-gray-light text-sm mt-1">
+            {filteredItems.length === items.length
+              ? `${items.length} expenses tracked`
+              : `${filteredItems.length} of ${items.length} expenses`}
+          </p>
         </div>
         <button
           className="btn-gold flex items-center gap-2"
@@ -735,21 +900,87 @@ export default function BudgetPage() {
         </div>
       </div>
 
-      {/* Filter */}
-      <div className="flex gap-2 mb-4">
-        {(['all', 'bride', 'groom'] as const).map((f) => (
-          <button
-            key={f}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              filterSide === f
-                ? 'bg-gold text-white'
-                : 'bg-white text-warm-gray border border-ivory-dark hover:border-gold'
-            }`}
-            onClick={() => setFilterSide(f)}
-          >
-            {f === 'all' ? 'All' : f === 'bride' ? "Bride's Side" : "Groom's Side"}
-          </button>
-        ))}
+      <div className="card mb-6 p-4">
+        <div className="relative mb-3">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-warm-gray-light pointer-events-none z-10" />
+          <input
+            type="text"
+            placeholder="Search vendor, category, assignee, notes..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ paddingLeft: '2.25rem', paddingRight: search ? '2rem' : '0.75rem' }}
+          />
+          {search && (
+            <button type="button" onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-warm-gray-light hover:text-warm-gray z-10">
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2 items-center">
+          {(['all', 'bride', 'groom'] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                filterSide === f
+                  ? 'bg-gold text-white'
+                  : 'bg-white text-warm-gray border border-ivory-dark hover:border-gold'
+              }`}
+              onClick={() => setFilterSide(f)}
+            >
+              {f === 'all' ? 'All' : f === 'bride' ? "Bride's Side" : "Groom's Side"}
+            </button>
+          ))}
+          <div className="w-full sm:w-44">
+            <Dropdown
+              value={filterCategory || 'All categories'}
+              options={['All categories', ...categories]}
+              placeholder="All categories"
+              onChange={(v) => setFilterCategory(v === 'All categories' ? '' : v)}
+            />
+          </div>
+          <div className="w-full sm:w-44">
+            <Dropdown
+              value={payFilterLabel(filterPay)}
+              options={['All payments', 'To be paid', 'Not paid', 'Advance paid', 'Settled']}
+              onChange={(v) => setFilterPay(payFilterValue(v))}
+            />
+          </div>
+          <div className="w-full sm:w-44 md:hidden">
+            <Dropdown
+              value={SORT_OPTIONS.find((option) => option.value === (sortField ?? ''))?.label ?? 'Default order'}
+              options={SORT_OPTIONS.map((option) => option.label)}
+              placeholder="Sort"
+              onChange={(label) => {
+                const match = SORT_OPTIONS.find((option) => option.label === label);
+                setSortField(match?.value ? match.value : null);
+              }}
+            />
+          </div>
+          {sortField && (
+            <button
+              type="button"
+              className="md:hidden px-3 py-1.5 rounded-full text-xs font-semibold border border-gold/40 text-gold"
+              onClick={() => setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'))}
+            >
+              {sortDir === 'asc' ? 'Ascending' : 'Descending'}
+            </button>
+          )}
+          {(search || filterCategory || filterPay || filterSide !== 'all') && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('');
+                setFilterCategory('');
+                setFilterPay('');
+                setFilterSide('all');
+              }}
+              className="px-3 py-1.5 rounded-full text-xs font-medium text-red-500 border border-red-200 hover:bg-red-50 transition-colors"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Add/Edit Form */}
@@ -869,8 +1100,8 @@ export default function BudgetPage() {
         <div className="text-center py-12 text-warm-gray-light">Loading budget...</div>
       ) : filteredItems.length === 0 ? (
         <div className="text-center py-12 text-warm-gray-light">
-          <p className="text-lg mb-2">No expenses yet</p>
-          <p className="text-sm">Start tracking your wedding budget!</p>
+          <p className="text-lg mb-2">{items.length === 0 ? 'No expenses yet' : 'No expenses match'}</p>
+          <p className="text-sm">{items.length === 0 ? 'Start tracking your wedding budget!' : 'Try a different search or filter.'}</p>
         </div>
       ) : (
         <div className="card overflow-x-auto">
@@ -878,21 +1109,21 @@ export default function BudgetPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-ivory-dark">
-                <th className="text-left py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Category</th>
-                <th className="text-left py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Vendor</th>
-                <th className="text-right py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Expected</th>
-                <th className="text-right py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Total</th>
-                <th className="text-right py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider" title="Total minus expected. Positive means over budget.">Diff</th>
-                <th className="text-right py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider" title="Number of people, items, or units">Pax</th>
-                <th className="text-right py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Per Pax</th>
-                <th className="text-right py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Advance</th>
-                <th className="text-left py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Adv. Date</th>
-                <th className="text-right py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Remaining</th>
-                <th className="text-left py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Due Date</th>
-                <th className="text-left py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Payment</th>
-                <th className="text-center py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Status</th>
-                <th className="text-left py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Assignee</th>
-                <th className="text-center py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Side</th>
+                <SortHeading field="category" label="Category" align="left" />
+                <SortHeading field="vendor" label="Vendor" align="left" />
+                <SortHeading field="expected" label="Expected" align="right" />
+                <SortHeading field="total" label="Total" align="right" />
+                <SortHeading field="diff" label="Diff" align="right" title="Total minus expected. Positive means over budget." />
+                <SortHeading field="pax" label="Pax" align="right" title="Number of people, items, or units" />
+                <SortHeading field="per_pax" label="Per Pax" align="right" />
+                <SortHeading field="advance" label="Advance" align="right" />
+                <SortHeading field="advance_date" label="Adv. Date" align="left" />
+                <SortHeading field="remaining" label="Remaining" align="right" />
+                <SortHeading field="due_date" label="Due Date" align="left" />
+                <SortHeading field="payment" label="Payment" align="left" />
+                <SortHeading field="status" label="Status" align="center" />
+                <SortHeading field="assignee" label="Assignee" align="left" />
+                <SortHeading field="side" label="Side" align="center" />
                 <th className="text-center py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
