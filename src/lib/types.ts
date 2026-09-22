@@ -31,16 +31,22 @@ export interface ScheduleItem {
   created_at: string;
 }
 
+export type PaymentMethod = 'debit' | 'credit' | 'cash';
+
 export interface BudgetItem {
   id: string;
   category: string;
   vendor: string;
   contact: string;
+  expected_budget: number | null;
   total_expense: number;
+  price_per_pax: number | null;
+  pax_count: number | null;
   advance_paid: number;
   advance_date: string | null;
   due_date: string | null;
   status: 'not_paid' | 'advance_paid' | 'settled';
+  payment_method: PaymentMethod | null;
   assignee: string;
   side: 'bride' | 'groom';
   notes: string;

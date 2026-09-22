@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { BudgetItem } from '@/lib/types';
+import { BudgetItem, PaymentMethod } from '@/lib/types';
 import { Plus, Trash2, Edit2, X } from 'lucide-react';
 import Dropdown from '@/components/Dropdown';
 
@@ -10,15 +10,36 @@ function formatLKR(amount: number) {
   return 'Rs. ' + amount.toLocaleString('en-LK', { minimumFractionDigits: 2 });
 }
 
+function optionalNumber(value: string): number | null {
+  if (value.trim() === '') return null;
+  const n = parseFloat(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function fieldNumber(value: number | string | null | undefined): string {
+  if (value == null || value === '') return '';
+  const n = Number(value);
+  return Number.isFinite(n) ? String(n) : '';
+}
+
+function moneyOrNull(value: number | string | null | undefined): number | null {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 type BudgetForm = {
   category: string;
   vendor: string;
-  contact: string;
+  expected_budget: string;
   total_expense: string;
+  price_per_pax: string;
+  pax_count: string;
   advance_paid: string;
   advance_date: string;
   due_date: string;
   status: 'not_paid' | 'advance_paid' | 'settled';
+  payment_method: '' | PaymentMethod;
   assignee: string;
   side: 'bride' | 'groom';
   notes: string;
@@ -27,16 +48,33 @@ type BudgetForm = {
 const emptyForm: BudgetForm = {
   category: '',
   vendor: '',
-  contact: '',
+  expected_budget: '',
   total_expense: '',
+  price_per_pax: '',
+  pax_count: '',
   advance_paid: '',
   advance_date: '',
   due_date: '',
   status: 'not_paid',
+  payment_method: '',
   assignee: '',
   side: 'groom',
   notes: '',
 };
+
+const PAYMENT_LABELS: Record<string, '' | PaymentMethod> = {
+  '': '',
+  Debit: 'debit',
+  Credit: 'credit',
+  Cash: 'cash',
+};
+
+function paymentLabel(method: string | null | undefined): string {
+  if (method === 'debit') return 'Debit';
+  if (method === 'credit') return 'Credit';
+  if (method === 'cash') return 'Cash';
+  return '';
+}
 
 export default function BudgetPage() {
   const [items, setItems] = useState<BudgetItem[]>([]);
@@ -79,12 +117,15 @@ export default function BudgetPage() {
     const payload = {
       category: form.category,
       vendor: form.vendor || 'TBD',
-      contact: form.contact,
+      expected_budget: optionalNumber(form.expected_budget),
       total_expense: parseFloat(form.total_expense) || 0,
+      price_per_pax: optionalNumber(form.price_per_pax),
+      pax_count: optionalNumber(form.pax_count),
       advance_paid: parseFloat(form.advance_paid) || 0,
       advance_date: form.advance_date || null,
       due_date: form.due_date || null,
       status: form.status,
+      payment_method: form.payment_method || null,
       assignee: form.assignee,
       side: form.side,
       notes: form.notes,
@@ -106,12 +147,15 @@ export default function BudgetPage() {
     setForm({
       category: item.category,
       vendor: item.vendor,
-      contact: item.contact,
-      total_expense: item.total_expense.toString(),
-      advance_paid: item.advance_paid.toString(),
+      expected_budget: fieldNumber(item.expected_budget),
+      total_expense: fieldNumber(item.total_expense),
+      price_per_pax: fieldNumber(item.price_per_pax),
+      pax_count: fieldNumber(item.pax_count),
+      advance_paid: fieldNumber(item.advance_paid),
       advance_date: item.advance_date || '',
       due_date: item.due_date || '',
       status: item.status,
+      payment_method: item.payment_method || '',
       assignee: item.assignee,
       side: item.side,
       notes: item.notes,
@@ -124,6 +168,13 @@ export default function BudgetPage() {
     if (!confirm('Delete this budget item?')) return;
     await supabase.from('budget_items').delete().eq('id', id);
     fetchItems();
+  }
+
+  async function updatePaymentMethod(id: string, method: string) {
+    const payment_method = (method || null) as PaymentMethod | null;
+    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, payment_method } : item)));
+    const { error } = await supabase.from('budget_items').update({ payment_method }).eq('id', id);
+    if (error) fetchItems();
   }
 
   const filteredItems = filterSide === 'all' ? items : items.filter((i) => i.side === filterSide);
@@ -145,6 +196,34 @@ export default function BudgetPage() {
 
   const grandTotal = brideTotal + groomTotal;
   const grandPaid = bridePaid + groomPaid;
+
+  function expectedSummary(rows: BudgetItem[]) {
+    const quoted = rows.filter((item) => moneyOrNull(item.expected_budget) != null);
+    const expected = quoted.reduce((sum, item) => sum + Number(item.expected_budget), 0);
+    const actual = quoted.reduce((sum, item) => sum + Number(item.total_expense), 0);
+    return { count: quoted.length, expected, diff: actual - expected };
+  }
+
+  const brideExpected = expectedSummary(brideItems);
+  const groomExpected = expectedSummary(groomItems);
+  const grandExpected = expectedSummary(items);
+
+  function expectedLine(summary: { count: number; expected: number; diff: number }, totalCount: number) {
+    if (summary.count === 0) return null;
+    const over = summary.diff > 0.004;
+    const under = summary.diff < -0.004;
+    return (
+      <p className="text-xs mt-1">
+        <span className="text-warm-gray-light">
+          Expected: {formatLKR(summary.expected)}
+          {summary.count < totalCount ? ` (${summary.count} of ${totalCount})` : ''}
+        </span>
+        {over && <span className="text-red-600"> · Over {formatLKR(summary.diff)}</span>}
+        {under && <span className="text-green-600"> · Under {formatLKR(Math.abs(summary.diff))}</span>}
+        {!over && !under && <span className="text-warm-gray-light"> · On budget</span>}
+      </p>
+    );
+  }
 
   function getStatusBadge(status: string) {
     switch (status) {
@@ -190,6 +269,7 @@ export default function BudgetPage() {
           <p className="text-xs text-warm-gray-light mt-1">
             Paid: {formatLKR(bridePaid)} &middot; Remaining: {formatLKR(brideTotal - bridePaid)}
           </p>
+          {expectedLine(brideExpected, brideItems.length)}
           <div className="mt-2 h-2 bg-ivory-dark rounded-full overflow-hidden">
             <div
               className="h-full bg-pink-300 rounded-full transition-all"
@@ -204,6 +284,7 @@ export default function BudgetPage() {
           <p className="text-xs text-warm-gray-light mt-1">
             Paid: {formatLKR(groomPaid)} &middot; Remaining: {formatLKR(groomTotal - groomPaid)}
           </p>
+          {expectedLine(groomExpected, groomItems.length)}
           <div className="mt-2 h-2 bg-ivory-dark rounded-full overflow-hidden">
             <div
               className="h-full bg-blue-300 rounded-full transition-all"
@@ -218,6 +299,7 @@ export default function BudgetPage() {
           <p className="text-xs text-warm-gray-light mt-1">
             Paid: {formatLKR(grandPaid)} &middot; Remaining: {formatLKR(grandTotal - grandPaid)}
           </p>
+          {expectedLine(grandExpected, items.length)}
           <div className="mt-2 h-2 bg-ivory-dark rounded-full overflow-hidden">
             <div
               className="h-full bg-gold rounded-full transition-all"
@@ -270,12 +352,29 @@ export default function BudgetPage() {
                 <input type="text" value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} placeholder="e.g., Enexus" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-warm-gray mb-1">Contact No.</label>
-                <input type="tel" value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} placeholder="+94 77 xxx xxxx" />
+                <label className="block text-xs font-medium text-warm-gray mb-1">Expected Budget (LKR)</label>
+                <input type="number" value={form.expected_budget} onChange={(e) => setForm({ ...form, expected_budget: e.target.value })} placeholder="Optional" min="0" step="0.01" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-warm-gray mb-1">Total Expense (LKR) *</label>
                 <input type="number" value={form.total_expense} onChange={(e) => setForm({ ...form, total_expense: e.target.value })} placeholder="0.00" min="0" step="0.01" required />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-warm-gray mb-1">Pax / Items</label>
+                <input type="number" value={form.pax_count} onChange={(e) => setForm({ ...form, pax_count: e.target.value })} placeholder="Optional" min="0" step="1" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-warm-gray mb-1">Price per Pax (LKR)</label>
+                <input type="number" value={form.price_per_pax} onChange={(e) => setForm({ ...form, price_per_pax: e.target.value })} placeholder="Optional" min="0" step="0.01" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-warm-gray mb-1">Payment Method</label>
+                <Dropdown
+                  value={paymentLabel(form.payment_method)}
+                  options={['', 'Debit', 'Credit', 'Cash']}
+                  placeholder="—"
+                  onChange={(v) => setForm({ ...form, payment_method: PAYMENT_LABELS[v] ?? '' })}
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-warm-gray mb-1">Advance Paid (LKR)</label>
@@ -342,12 +441,16 @@ export default function BudgetPage() {
               <tr className="border-b border-ivory-dark">
                 <th className="text-left py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Category</th>
                 <th className="text-left py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Vendor</th>
-                <th className="text-left py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Contact</th>
+                <th className="text-right py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Expected</th>
                 <th className="text-right py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Total</th>
+                <th className="text-right py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider" title="Total minus expected. Positive means over budget.">Diff</th>
+                <th className="text-right py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider" title="Number of people, items, or units">Pax</th>
+                <th className="text-right py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Per Pax</th>
                 <th className="text-right py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Advance</th>
                 <th className="text-left py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Adv. Date</th>
                 <th className="text-right py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Remaining</th>
                 <th className="text-left py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Due Date</th>
+                <th className="text-left py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Payment</th>
                 <th className="text-center py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Status</th>
                 <th className="text-left py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Assignee</th>
                 <th className="text-center py-3 px-2 text-xs font-semibold text-warm-gray uppercase tracking-wider">Side</th>
@@ -357,12 +460,34 @@ export default function BudgetPage() {
             <tbody>
               {filteredItems.map((item) => {
                 const remaining = Number(item.total_expense) - Number(item.advance_paid);
+                const expected = moneyOrNull(item.expected_budget);
+                const diff = expected == null ? null : Number(item.total_expense) - expected;
+                const pax = moneyOrNull(item.pax_count);
+                const perPax = moneyOrNull(item.price_per_pax);
                 return (
                   <tr key={item.id} className="border-b border-ivory-dark/50 hover:bg-ivory/50 transition-colors">
-                    <td className="py-3 px-2 font-medium">{item.category}</td>
+                    <td className="py-3 px-2 font-medium whitespace-nowrap">{item.category}</td>
                     <td className="py-3 px-2">{item.vendor}</td>
-                    <td className="py-3 px-2 text-xs">{item.contact}</td>
-                    <td className="py-3 px-2 text-right font-medium">{formatLKR(Number(item.total_expense))}</td>
+                    <td className="py-3 px-2 text-right whitespace-nowrap">
+                      {expected == null ? <span className="text-warm-gray-light">—</span> : formatLKR(expected)}
+                    </td>
+                    <td className="py-3 px-2 text-right font-medium whitespace-nowrap">{formatLKR(Number(item.total_expense))}</td>
+                    <td className="py-3 px-2 text-right whitespace-nowrap">
+                      {diff == null ? (
+                        <span className="text-warm-gray-light">—</span>
+                      ) : (
+                        <span className={diff > 0.004 ? 'text-red-600 font-medium' : diff < -0.004 ? 'text-green-600 font-medium' : 'text-warm-gray-light'}>
+                          {diff > 0.004 ? '+' : diff < -0.004 ? '−' : ''}
+                          {formatLKR(Math.abs(diff))}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-2 text-right">
+                      {pax == null ? <span className="text-warm-gray-light">—</span> : pax.toLocaleString('en-LK')}
+                    </td>
+                    <td className="py-3 px-2 text-right whitespace-nowrap">
+                      {perPax == null ? <span className="text-warm-gray-light">—</span> : formatLKR(perPax)}
+                    </td>
                     <td className="py-3 px-2 text-right">{formatLKR(Number(item.advance_paid))}</td>
                     <td className="py-3 px-2 text-xs">
                       {item.advance_date ? new Date(item.advance_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '-'}
@@ -374,6 +499,19 @@ export default function BudgetPage() {
                     </td>
                     <td className="py-3 px-2 text-xs">
                       {item.due_date ? new Date(item.due_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '-'}
+                    </td>
+                    <td className="py-3 px-2">
+                      <select
+                        aria-label={`Payment method for ${item.vendor}`}
+                        value={item.payment_method ?? ''}
+                        onChange={(e) => updatePaymentMethod(item.id, e.target.value)}
+                        style={{ width: 'auto', minWidth: '5.5rem', padding: '0.2rem 0.4rem', fontSize: '0.75rem' }}
+                      >
+                        <option value="">—</option>
+                        <option value="debit">Debit</option>
+                        <option value="credit">Credit</option>
+                        <option value="cash">Cash</option>
+                      </select>
                     </td>
                     <td className="py-3 px-2 text-center">{getStatusBadge(item.status)}</td>
                     <td className="py-3 px-2">{item.assignee}</td>
