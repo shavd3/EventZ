@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import { BudgetItem, PaymentMethod } from '@/lib/types';
 import { Plus, Trash2, Edit2, X } from 'lucide-react';
@@ -76,6 +77,322 @@ function paymentLabel(method: string | null | undefined): string {
   return '';
 }
 
+type EditableField =
+  | 'category'
+  | 'vendor'
+  | 'expected_budget'
+  | 'total_expense'
+  | 'pax_count'
+  | 'price_per_pax'
+  | 'advance_paid'
+  | 'advance_date'
+  | 'due_date'
+  | 'payment_method'
+  | 'status'
+  | 'assignee'
+  | 'side';
+
+type MoveDir = 'up' | 'down' | 'left' | 'right';
+
+const EDITABLE_FIELDS: EditableField[] = [
+  'category',
+  'vendor',
+  'expected_budget',
+  'total_expense',
+  'pax_count',
+  'price_per_pax',
+  'advance_paid',
+  'advance_date',
+  'due_date',
+  'payment_method',
+  'status',
+  'assignee',
+  'side',
+];
+
+const CHOICE_FIELDS = new Set<EditableField>(['category', 'payment_method', 'status', 'side']);
+
+const STATUS_OPTIONS = [
+  { value: 'not_paid', label: 'Not Paid' },
+  { value: 'advance_paid', label: 'Advance Paid' },
+  { value: 'settled', label: 'Settled' },
+];
+
+const SIDE_OPTIONS = [
+  { value: 'bride', label: 'Bride' },
+  { value: 'groom', label: 'Groom' },
+];
+
+const PAYMENT_OPTIONS = [
+  { value: '', label: '—' },
+  { value: 'debit', label: 'Debit' },
+  { value: 'credit', label: 'Credit' },
+  { value: 'cash', label: 'Cash' },
+];
+
+function blank() {
+  return <span className="text-warm-gray-light">—</span>;
+}
+
+function formatDay(value: string | null | undefined) {
+  if (!value) return blank();
+  return new Date(value).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+function dateField(value: string | null | undefined): string {
+  if (!value) return '';
+  return value.slice(0, 10);
+}
+
+function valueOf(item: BudgetItem, field: EditableField): string {
+  switch (field) {
+    case 'category':
+      return item.category || '';
+    case 'vendor':
+      return item.vendor || '';
+    case 'expected_budget':
+      return fieldNumber(item.expected_budget);
+    case 'total_expense':
+      return fieldNumber(item.total_expense);
+    case 'pax_count':
+      return fieldNumber(item.pax_count);
+    case 'price_per_pax':
+      return fieldNumber(item.price_per_pax);
+    case 'advance_paid':
+      return fieldNumber(item.advance_paid);
+    case 'advance_date':
+      return dateField(item.advance_date);
+    case 'due_date':
+      return dateField(item.due_date);
+    case 'payment_method':
+      return item.payment_method || '';
+    case 'status':
+      return item.status;
+    case 'assignee':
+      return item.assignee || '';
+    case 'side':
+      return item.side;
+  }
+}
+
+function payloadFor(field: EditableField, raw: string): Partial<BudgetItem> {
+  switch (field) {
+    case 'expected_budget':
+    case 'price_per_pax':
+    case 'pax_count':
+      return { [field]: optionalNumber(raw) };
+    case 'total_expense':
+    case 'advance_paid':
+      return { [field]: parseFloat(raw) || 0 };
+    case 'advance_date':
+    case 'due_date':
+      return { [field]: raw || null };
+    case 'payment_method':
+      return { payment_method: (raw || null) as PaymentMethod | null };
+    case 'vendor':
+      return { vendor: raw.trim() || 'TBD' };
+    case 'status':
+      return { status: raw as BudgetItem['status'] };
+    case 'side':
+      return { side: raw as BudgetItem['side'] };
+    case 'category':
+      return { category: raw };
+    case 'assignee':
+      return { assignee: raw };
+  }
+}
+
+function sameValue(current: unknown, next: unknown): boolean {
+  if (typeof next === 'number') return Number(current) === next;
+  if (next == null) return current == null || current === '';
+  if (typeof next === 'string' && typeof current === 'string' && current.slice(0, 10) === next && next.length === 10 && current.length >= 10) {
+    return true;
+  }
+  return current === next;
+}
+
+function ChoiceMenu({
+  options,
+  value,
+  anchorRef,
+  onPick,
+  onClose,
+}: {
+  options: { value: string; label: string }[];
+  value: string;
+  anchorRef: React.RefObject<HTMLButtonElement | null>;
+  onPick: (value: string, dir?: MoveDir) => void;
+  onClose: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const [hi, setHi] = useState(() => Math.max(0, options.findIndex((option) => option.value === value)));
+  const [box, setBox] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  useEffect(() => {
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const height = options.length * 36 + 12;
+    const width = Math.max(rect.width, 148);
+    const openUp = window.innerHeight - rect.bottom < height + 8 && rect.top > height;
+    setBox({
+      top: openUp ? rect.top - height - 2 : rect.bottom + 2,
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+      width,
+    });
+  }, [anchorRef, options.length]);
+
+  useEffect(() => {
+    if (box) menuRef.current?.focus();
+  }, [box]);
+
+  useEffect(() => {
+    function onDoc(event: MouseEvent) {
+      const target = event.target as Node;
+      if (anchorRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      onCloseRef.current();
+    }
+    const originTop = anchorRef.current?.getBoundingClientRect().top ?? 0;
+    function onScroll() {
+      const nextTop = anchorRef.current?.getBoundingClientRect().top;
+      if (nextTop == null || Math.abs(nextTop - originTop) > 4) onCloseRef.current();
+    }
+    document.addEventListener('mousedown', onDoc);
+    window.addEventListener('scroll', onScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  }, [anchorRef]);
+
+  if (!box || typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      tabIndex={-1}
+      className="excel-menu"
+      style={{ position: 'fixed', top: box.top, left: box.left, minWidth: box.width, zIndex: 60 }}
+      onKeyDown={(event) => {
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          setHi((current) => Math.min(options.length - 1, current + 1));
+        } else if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          setHi((current) => Math.max(0, current - 1));
+        } else if (event.key === 'Enter') {
+          event.preventDefault();
+          onPick(options[hi].value, 'down');
+        } else if (event.key === 'Tab') {
+          event.preventDefault();
+          onPick(options[hi].value, event.shiftKey ? 'left' : 'right');
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          onClose();
+        }
+      }}
+    >
+      {options.map((option, index) => (
+        <button
+          key={option.value || 'blank'}
+          type="button"
+          className={index === hi ? 'is-hi' : ''}
+          onMouseEnter={() => setHi(index)}
+          onMouseDown={(event) => {
+            event.preventDefault();
+            onPick(option.value);
+          }}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>,
+    document.body,
+  );
+}
+
+function ExcelCell({
+  align,
+  kind,
+  active,
+  draft,
+  display,
+  options,
+  onOpen,
+  onDraft,
+  onCommit,
+  onCancel,
+  onMove,
+  onPick,
+}: {
+  align: 'left' | 'right' | 'center';
+  kind: 'text' | 'money' | 'count' | 'date' | 'choice';
+  active: boolean;
+  draft: string;
+  display: React.ReactNode;
+  options?: { value: string; label: string }[];
+  onOpen: () => void;
+  onDraft: (value: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+  onMove: (dir: MoveDir) => void;
+  onPick: (value: string, dir?: MoveDir) => void;
+}) {
+  const skipBlur = useRef(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const alignClass = align === 'right' ? 'align-right' : align === 'center' ? 'align-center' : '';
+
+  return (
+    <td className={`sheet-td ${active ? 'is-active' : ''} ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : ''}`}>
+      {active && kind !== 'choice' ? (
+        <input
+          autoFocus
+          className={`excel-input ${align === 'right' ? 'is-right' : ''}`}
+          type={kind === 'date' ? 'date' : 'text'}
+          inputMode={kind === 'money' || kind === 'count' ? 'decimal' : undefined}
+          value={draft}
+          autoComplete="off"
+          onFocus={(event) => {
+            if (kind !== 'date') event.currentTarget.select();
+          }}
+          onChange={(event) => onDraft(event.target.value)}
+          onBlur={() => {
+            if (skipBlur.current) {
+              skipBlur.current = false;
+              return;
+            }
+            onCommit();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              skipBlur.current = true;
+              onCancel();
+            } else if (event.key === 'Enter') {
+              event.preventDefault();
+              skipBlur.current = true;
+              onMove('down');
+            } else if (event.key === 'Tab') {
+              event.preventDefault();
+              skipBlur.current = true;
+              onMove(event.shiftKey ? 'left' : 'right');
+            }
+          }}
+        />
+      ) : (
+        <button ref={btnRef} type="button" className={`excel-display ${alignClass}`} onClick={onOpen}>
+          {display}
+        </button>
+      )}
+      {active && kind === 'choice' && options && (
+        <ChoiceMenu options={options} value={draft} anchorRef={btnRef} onPick={onPick} onClose={onCancel} />
+      )}
+    </td>
+  );
+}
+
 export default function BudgetPage() {
   const [items, setItems] = useState<BudgetItem[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -84,6 +401,8 @@ export default function BudgetPage() {
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(true);
   const [filterSide, setFilterSide] = useState<'all' | 'bride' | 'groom'>('all');
+  const [active, setActive] = useState<{ id: string; field: EditableField } | null>(null);
+  const [draft, setDraft] = useState('');
   const formRef = useRef<HTMLDivElement>(null);
 
   async function fetchCategories() {
@@ -162,6 +481,7 @@ export default function BudgetPage() {
     });
     setEditId(item.id);
     setShowForm(true);
+    setActive(null);
   }
 
   async function deleteItem(id: string) {
@@ -170,11 +490,76 @@ export default function BudgetPage() {
     fetchItems();
   }
 
-  async function updatePaymentMethod(id: string, method: string) {
-    const payment_method = (method || null) as PaymentMethod | null;
-    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, payment_method } : item)));
-    const { error } = await supabase.from('budget_items').update({ payment_method }).eq('id', id);
+  async function commitField(item: BudgetItem, field: EditableField, raw: string) {
+    const patch = payloadFor(field, raw);
+    const next = patch[field];
+    if (sameValue(item[field], next)) return;
+    setItems((prev) => prev.map((row) => (row.id === item.id ? { ...row, ...patch } : row)));
+    const { error } = await supabase.from('budget_items').update(patch).eq('id', item.id);
     if (error) fetchItems();
+  }
+
+  function neighbor(from: { id: string; field: EditableField }, dir: MoveDir) {
+    const row = filteredItems.findIndex((item) => item.id === from.id);
+    const col = EDITABLE_FIELDS.indexOf(from.field);
+    if (row < 0 || col < 0) return null;
+    let nextRow = row;
+    let nextCol = col;
+    if (dir === 'down') nextRow += 1;
+    if (dir === 'up') nextRow -= 1;
+    if (dir === 'right') nextCol += 1;
+    if (dir === 'left') nextCol -= 1;
+    if (nextCol >= EDITABLE_FIELDS.length) {
+      nextCol = 0;
+      nextRow += 1;
+    }
+    if (nextCol < 0) {
+      nextCol = EDITABLE_FIELDS.length - 1;
+      nextRow -= 1;
+    }
+    if (nextRow < 0 || nextRow >= filteredItems.length) return null;
+    return { id: filteredItems[nextRow].id, field: EDITABLE_FIELDS[nextCol] };
+  }
+
+  function goTo(from: { id: string; field: EditableField }, dir: MoveDir) {
+    const next = neighbor(from, dir);
+    if (!next) {
+      setActive(null);
+      return;
+    }
+    const nextItem = items.find((item) => item.id === next.id);
+    setDraft(nextItem ? valueOf(nextItem, next.field) : '');
+    setActive(next);
+  }
+
+  function openCell(item: BudgetItem, field: EditableField) {
+    setDraft(valueOf(item, field));
+    setActive({ id: item.id, field });
+  }
+
+  function commitActive() {
+    if (!active) return;
+    const item = items.find((row) => row.id === active.id);
+    if (item && !CHOICE_FIELDS.has(active.field)) void commitField(item, active.field, draft);
+    setActive(null);
+  }
+
+  function moveActive(dir: MoveDir) {
+    if (!active) return;
+    const item = items.find((row) => row.id === active.id);
+    if (item && !CHOICE_FIELDS.has(active.field)) void commitField(item, active.field, draft);
+    goTo(active, dir);
+  }
+
+  function pickActive(value: string, dir?: MoveDir) {
+    if (!active) return;
+    const item = items.find((row) => row.id === active.id);
+    if (item) void commitField(item, active.field, value);
+    if (!dir) {
+      setActive(null);
+      return;
+    }
+    goTo(active, dir);
   }
 
   const filteredItems = filterSide === 'all' ? items : items.filter((i) => i.side === filterSide);
@@ -436,6 +821,7 @@ export default function BudgetPage() {
         </div>
       ) : (
         <div className="card overflow-x-auto">
+          <p className="text-xs text-warm-gray-light mb-3">Click a cell to edit. Enter moves down, Tab moves across, Esc cancels. Diff and Remaining update on their own.</p>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-ivory-dark">
@@ -464,17 +850,30 @@ export default function BudgetPage() {
                 const diff = expected == null ? null : Number(item.total_expense) - expected;
                 const pax = moneyOrNull(item.pax_count);
                 const perPax = moneyOrNull(item.price_per_pax);
+                const categoryOptions = (categories.includes(item.category) ? categories : [item.category, ...categories])
+                  .map((name) => ({ value: name, label: name }));
+                const cell = (field: EditableField) => ({
+                  active: active?.id === item.id && active.field === field,
+                  draft,
+                  onOpen: () => {
+                    if (active?.id === item.id && active.field === field) setActive(null);
+                    else openCell(item, field);
+                  },
+                  onDraft: setDraft,
+                  onCommit: commitActive,
+                  onCancel: () => setActive(null),
+                  onMove: moveActive,
+                  onPick: pickActive,
+                });
                 return (
                   <tr key={item.id} className="border-b border-ivory-dark/50 hover:bg-ivory/50 transition-colors">
-                    <td className="py-3 px-2 font-medium whitespace-nowrap">{item.category}</td>
-                    <td className="py-3 px-2">{item.vendor}</td>
-                    <td className="py-3 px-2 text-right whitespace-nowrap">
-                      {expected == null ? <span className="text-warm-gray-light">—</span> : formatLKR(expected)}
-                    </td>
-                    <td className="py-3 px-2 text-right font-medium whitespace-nowrap">{formatLKR(Number(item.total_expense))}</td>
-                    <td className="py-3 px-2 text-right whitespace-nowrap">
+                    <ExcelCell align="left" kind="choice" display={<span className="font-medium whitespace-nowrap">{item.category}</span>} options={categoryOptions} {...cell('category')} />
+                    <ExcelCell align="left" kind="text" display={item.vendor || blank()} {...cell('vendor')} />
+                    <ExcelCell align="right" kind="money" display={expected == null ? blank() : formatLKR(expected)} {...cell('expected_budget')} />
+                    <ExcelCell align="right" kind="money" display={<span className="font-medium whitespace-nowrap">{formatLKR(Number(item.total_expense))}</span>} {...cell('total_expense')} />
+                    <td className="sheet-td text-right whitespace-nowrap">
                       {diff == null ? (
-                        <span className="text-warm-gray-light">—</span>
+                        blank()
                       ) : (
                         <span className={diff > 0.004 ? 'text-red-600 font-medium' : diff < -0.004 ? 'text-green-600 font-medium' : 'text-warm-gray-light'}>
                           {diff > 0.004 ? '+' : diff < -0.004 ? '−' : ''}
@@ -482,52 +881,36 @@ export default function BudgetPage() {
                         </span>
                       )}
                     </td>
-                    <td className="py-3 px-2 text-right">
-                      {pax == null ? <span className="text-warm-gray-light">—</span> : pax.toLocaleString('en-LK')}
+                    <ExcelCell align="right" kind="count" display={pax == null ? blank() : pax.toLocaleString('en-LK')} {...cell('pax_count')} />
+                    <ExcelCell align="right" kind="money" display={perPax == null ? blank() : formatLKR(perPax)} {...cell('price_per_pax')} />
+                    <ExcelCell align="right" kind="money" display={formatLKR(Number(item.advance_paid))} {...cell('advance_paid')} />
+                    <ExcelCell align="left" kind="date" display={formatDay(item.advance_date)} {...cell('advance_date')} />
+                    <td className="sheet-td text-right whitespace-nowrap font-medium">
+                      <span className={remaining > 0 ? 'text-red-600' : 'text-green-600'}>{formatLKR(remaining)}</span>
                     </td>
-                    <td className="py-3 px-2 text-right whitespace-nowrap">
-                      {perPax == null ? <span className="text-warm-gray-light">—</span> : formatLKR(perPax)}
-                    </td>
-                    <td className="py-3 px-2 text-right">{formatLKR(Number(item.advance_paid))}</td>
-                    <td className="py-3 px-2 text-xs">
-                      {item.advance_date ? new Date(item.advance_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '-'}
-                    </td>
-                    <td className="py-3 px-2 text-right font-medium">
-                      <span className={remaining > 0 ? 'text-red-600' : 'text-green-600'}>
-                        {formatLKR(remaining)}
-                      </span>
-                    </td>
-                    <td className="py-3 px-2 text-xs">
-                      {item.due_date ? new Date(item.due_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '-'}
-                    </td>
-                    <td className="py-3 px-2">
-                      <select
-                        aria-label={`Payment method for ${item.vendor}`}
-                        value={item.payment_method ?? ''}
-                        onChange={(e) => updatePaymentMethod(item.id, e.target.value)}
-                        style={{ width: 'auto', minWidth: '5.5rem', padding: '0.2rem 0.4rem', fontSize: '0.75rem' }}
-                      >
-                        <option value="">—</option>
-                        <option value="debit">Debit</option>
-                        <option value="credit">Credit</option>
-                        <option value="cash">Cash</option>
-                      </select>
-                    </td>
-                    <td className="py-3 px-2 text-center">{getStatusBadge(item.status)}</td>
-                    <td className="py-3 px-2">{item.assignee}</td>
-                    <td className="py-3 px-2 text-center">
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                        item.side === 'bride' ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700'
-                      }`}>
-                        {item.side === 'bride' ? 'Bride' : 'Groom'}
-                      </span>
-                    </td>
-                    <td className="py-3 px-2 text-center">
+                    <ExcelCell align="left" kind="date" display={formatDay(item.due_date)} {...cell('due_date')} />
+                    <ExcelCell align="left" kind="choice" display={paymentLabel(item.payment_method) || blank()} options={PAYMENT_OPTIONS} {...cell('payment_method')} />
+                    <ExcelCell align="center" kind="choice" display={getStatusBadge(item.status)} options={STATUS_OPTIONS} {...cell('status')} />
+                    <ExcelCell align="left" kind="text" display={item.assignee || blank()} {...cell('assignee')} />
+                    <ExcelCell
+                      align="center"
+                      kind="choice"
+                      options={SIDE_OPTIONS}
+                      display={
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                          item.side === 'bride' ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {item.side === 'bride' ? 'Bride' : 'Groom'}
+                        </span>
+                      }
+                      {...cell('side')}
+                    />
+                    <td className="sheet-td text-center">
                       <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => startEdit(item)} className="p-1 text-warm-gray-light hover:text-gold transition-colors">
+                        <button type="button" onClick={() => startEdit(item)} className="p-1 text-warm-gray-light hover:text-gold transition-colors" title="Edit notes">
                           <Edit2 size={14} />
                         </button>
-                        <button onClick={() => deleteItem(item.id)} className="p-1 text-warm-gray-light hover:text-red-500 transition-colors">
+                        <button type="button" onClick={() => deleteItem(item.id)} className="p-1 text-warm-gray-light hover:text-red-500 transition-colors">
                           <Trash2 size={14} />
                         </button>
                       </div>
