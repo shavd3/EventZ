@@ -29,6 +29,15 @@ function moneyOrNull(value: number | string | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function derivedTotal(pax: number | null, price: number | null): number | null {
+  if (pax == null || price == null) return null;
+  return Math.round(pax * price * 100) / 100;
+}
+
+function effectiveTotal(item: BudgetItem): number {
+  return derivedTotal(moneyOrNull(item.pax_count), moneyOrNull(item.price_per_pax)) ?? Number(item.total_expense);
+}
+
 type BudgetForm = {
   category: string;
   vendor: string;
@@ -45,6 +54,13 @@ type BudgetForm = {
   side: 'bride' | 'groom';
   notes: string;
 };
+
+function formWithCount(current: BudgetForm, patch: Partial<Pick<BudgetForm, 'pax_count' | 'price_per_pax'>>): BudgetForm {
+  const next = { ...current, ...patch };
+  const total = derivedTotal(optionalNumber(next.pax_count), optionalNumber(next.price_per_pax));
+  if (total == null) return next;
+  return { ...next, total_expense: fieldNumber(total) };
+}
 
 const emptyForm: BudgetForm = {
   category: '',
@@ -153,7 +169,7 @@ function valueOf(item: BudgetItem, field: EditableField): string {
     case 'expected_budget':
       return fieldNumber(item.expected_budget);
     case 'total_expense':
-      return fieldNumber(item.total_expense);
+      return fieldNumber(effectiveTotal(item));
     case 'pax_count':
       return fieldNumber(item.pax_count);
     case 'price_per_pax':
@@ -437,7 +453,7 @@ export default function BudgetPage() {
       category: form.category,
       vendor: form.vendor || 'TBD',
       expected_budget: optionalNumber(form.expected_budget),
-      total_expense: parseFloat(form.total_expense) || 0,
+      total_expense: derivedTotal(optionalNumber(form.pax_count), optionalNumber(form.price_per_pax)) ?? (parseFloat(form.total_expense) || 0),
       price_per_pax: optionalNumber(form.price_per_pax),
       pax_count: optionalNumber(form.pax_count),
       advance_paid: parseFloat(form.advance_paid) || 0,
@@ -467,7 +483,7 @@ export default function BudgetPage() {
       category: item.category,
       vendor: item.vendor,
       expected_budget: fieldNumber(item.expected_budget),
-      total_expense: fieldNumber(item.total_expense),
+      total_expense: fieldNumber(effectiveTotal(item)),
       price_per_pax: fieldNumber(item.price_per_pax),
       pax_count: fieldNumber(item.pax_count),
       advance_paid: fieldNumber(item.advance_paid),
@@ -490,44 +506,65 @@ export default function BudgetPage() {
     fetchItems();
   }
 
-  async function commitField(item: BudgetItem, field: EditableField, raw: string) {
+  function rowAfterEdit(item: BudgetItem, field: EditableField, raw: string): BudgetItem {
     const patch = payloadFor(field, raw);
-    const next = patch[field];
-    if (sameValue(item[field], next)) return;
+    if (field === 'total_expense' && derivedTotal(moneyOrNull(item.pax_count), moneyOrNull(item.price_per_pax)) != null) {
+      return item;
+    }
+    if (field === 'pax_count' || field === 'price_per_pax') {
+      const pax = field === 'pax_count' ? patch.pax_count ?? null : moneyOrNull(item.pax_count);
+      const price = field === 'price_per_pax' ? patch.price_per_pax ?? null : moneyOrNull(item.price_per_pax);
+      const total = derivedTotal(pax, price);
+      if (total != null) patch.total_expense = total;
+    }
+    return { ...item, ...patch };
+  }
+
+  async function commitField(item: BudgetItem, field: EditableField, raw: string) {
+    const next = rowAfterEdit(item, field, raw);
+    const patch: Partial<BudgetItem> = { [field]: next[field] };
+    if (field === 'pax_count' || field === 'price_per_pax') patch.total_expense = next.total_expense;
+    const changed = (Object.keys(patch) as (keyof BudgetItem)[]).some((key) => !sameValue(item[key], patch[key]));
+    if (!changed) return;
     setItems((prev) => prev.map((row) => (row.id === item.id ? { ...row, ...patch } : row)));
     const { error } = await supabase.from('budget_items').update(patch).eq('id', item.id);
     if (error) fetchItems();
   }
 
-  function neighbor(from: { id: string; field: EditableField }, dir: MoveDir) {
-    const row = filteredItems.findIndex((item) => item.id === from.id);
-    const col = EDITABLE_FIELDS.indexOf(from.field);
+  function neighbor(from: { id: string; field: EditableField }, dir: MoveDir, edited?: BudgetItem) {
+    const rows = edited ? filteredItems.map((item) => (item.id === edited.id ? edited : item)) : filteredItems;
+    let row = rows.findIndex((item) => item.id === from.id);
+    let col = EDITABLE_FIELDS.indexOf(from.field);
     if (row < 0 || col < 0) return null;
-    let nextRow = row;
-    let nextCol = col;
-    if (dir === 'down') nextRow += 1;
-    if (dir === 'up') nextRow -= 1;
-    if (dir === 'right') nextCol += 1;
-    if (dir === 'left') nextCol -= 1;
-    if (nextCol >= EDITABLE_FIELDS.length) {
-      nextCol = 0;
-      nextRow += 1;
+    for (let step = 0; step < rows.length * EDITABLE_FIELDS.length; step += 1) {
+      if (dir === 'down') row += 1;
+      if (dir === 'up') row -= 1;
+      if (dir === 'right') col += 1;
+      if (dir === 'left') col -= 1;
+      if (col >= EDITABLE_FIELDS.length) {
+        col = 0;
+        row += 1;
+      }
+      if (col < 0) {
+        col = EDITABLE_FIELDS.length - 1;
+        row -= 1;
+      }
+      if (row < 0 || row >= rows.length) return null;
+      const field = EDITABLE_FIELDS[col];
+      const lockedTotal = field === 'total_expense' && derivedTotal(moneyOrNull(rows[row].pax_count), moneyOrNull(rows[row].price_per_pax)) != null;
+      if (!lockedTotal) return { id: rows[row].id, field };
     }
-    if (nextCol < 0) {
-      nextCol = EDITABLE_FIELDS.length - 1;
-      nextRow -= 1;
-    }
-    if (nextRow < 0 || nextRow >= filteredItems.length) return null;
-    return { id: filteredItems[nextRow].id, field: EDITABLE_FIELDS[nextCol] };
+    return null;
   }
 
-  function goTo(from: { id: string; field: EditableField }, dir: MoveDir) {
-    const next = neighbor(from, dir);
+  function goTo(from: { id: string; field: EditableField }, dir: MoveDir, edited?: BudgetItem) {
+    const next = neighbor(from, dir, edited);
     if (!next) {
       setActive(null);
       return;
     }
-    const nextItem = items.find((item) => item.id === next.id);
+    const stored = items.find((item) => item.id === next.id);
+    const nextItem = edited && edited.id === next.id ? edited : stored;
     setDraft(nextItem ? valueOf(nextItem, next.field) : '');
     setActive(next);
   }
@@ -547,8 +584,12 @@ export default function BudgetPage() {
   function moveActive(dir: MoveDir) {
     if (!active) return;
     const item = items.find((row) => row.id === active.id);
-    if (item && !CHOICE_FIELDS.has(active.field)) void commitField(item, active.field, draft);
-    goTo(active, dir);
+    let edited: BudgetItem | undefined;
+    if (item && !CHOICE_FIELDS.has(active.field)) {
+      edited = rowAfterEdit(item, active.field, draft);
+      void commitField(item, active.field, draft);
+    }
+    goTo(active, dir, edited);
   }
 
   function pickActive(value: string, dir?: MoveDir) {
@@ -567,15 +608,15 @@ export default function BudgetPage() {
   const brideItems = items.filter((i) => i.side === 'bride');
   const groomItems = items.filter((i) => i.side === 'groom');
 
-  const brideTotal = brideItems.reduce((s, i) => s + Number(i.total_expense), 0);
+  const brideTotal = brideItems.reduce((s, i) => s + effectiveTotal(i), 0);
   const bridePaid = brideItems.reduce((s, i) => {
-    if (i.status === 'settled') return s + Number(i.total_expense);
+    if (i.status === 'settled') return s + effectiveTotal(i);
     return s + Number(i.advance_paid);
   }, 0);
 
-  const groomTotal = groomItems.reduce((s, i) => s + Number(i.total_expense), 0);
+  const groomTotal = groomItems.reduce((s, i) => s + effectiveTotal(i), 0);
   const groomPaid = groomItems.reduce((s, i) => {
-    if (i.status === 'settled') return s + Number(i.total_expense);
+    if (i.status === 'settled') return s + effectiveTotal(i);
     return s + Number(i.advance_paid);
   }, 0);
 
@@ -585,7 +626,7 @@ export default function BudgetPage() {
   function expectedSummary(rows: BudgetItem[]) {
     const quoted = rows.filter((item) => moneyOrNull(item.expected_budget) != null);
     const expected = quoted.reduce((sum, item) => sum + Number(item.expected_budget), 0);
-    const actual = quoted.reduce((sum, item) => sum + Number(item.total_expense), 0);
+    const actual = quoted.reduce((sum, item) => sum + effectiveTotal(item), 0);
     return { count: quoted.length, expected, diff: actual - expected };
   }
 
@@ -741,16 +782,28 @@ export default function BudgetPage() {
                 <input type="number" value={form.expected_budget} onChange={(e) => setForm({ ...form, expected_budget: e.target.value })} placeholder="Optional" min="0" step="0.01" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-warm-gray mb-1">Total Expense (LKR) *</label>
-                <input type="number" value={form.total_expense} onChange={(e) => setForm({ ...form, total_expense: e.target.value })} placeholder="0.00" min="0" step="0.01" required />
-              </div>
-              <div>
                 <label className="block text-xs font-medium text-warm-gray mb-1">Pax / Items</label>
-                <input type="number" value={form.pax_count} onChange={(e) => setForm({ ...form, pax_count: e.target.value })} placeholder="Optional" min="0" step="1" />
+                <input type="number" value={form.pax_count} onChange={(e) => setForm((current) => formWithCount(current, { pax_count: e.target.value }))} placeholder="Optional" min="0" step="1" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-warm-gray mb-1">Price per Pax (LKR)</label>
-                <input type="number" value={form.price_per_pax} onChange={(e) => setForm({ ...form, price_per_pax: e.target.value })} placeholder="Optional" min="0" step="0.01" />
+                <input type="number" value={form.price_per_pax} onChange={(e) => setForm((current) => formWithCount(current, { price_per_pax: e.target.value }))} placeholder="Optional" min="0" step="0.01" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-warm-gray mb-1">Total Expense (LKR) *</label>
+                <input
+                  type="number"
+                  value={form.total_expense}
+                  onChange={(e) => setForm({ ...form, total_expense: e.target.value })}
+                  placeholder="0.00"
+                  min="0"
+                  step="0.01"
+                  required
+                  readOnly={derivedTotal(optionalNumber(form.pax_count), optionalNumber(form.price_per_pax)) != null}
+                />
+                {derivedTotal(optionalNumber(form.pax_count), optionalNumber(form.price_per_pax)) != null && (
+                  <p className="text-[11px] text-warm-gray-light mt-1">Pax × price per pax</p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-warm-gray mb-1">Payment Method</label>
@@ -821,7 +874,7 @@ export default function BudgetPage() {
         </div>
       ) : (
         <div className="card overflow-x-auto">
-          <p className="text-xs text-warm-gray-light mb-3">Click a cell to edit. Enter moves down, Tab moves across, Esc cancels. Diff and Remaining update on their own.</p>
+          <p className="text-xs text-warm-gray-light mb-3">Click a cell to edit. Enter moves down, Tab moves across, Esc cancels. Total is pax × price when both are filled; otherwise type it. Diff and Remaining update on their own.</p>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-ivory-dark">
@@ -845,11 +898,13 @@ export default function BudgetPage() {
             </thead>
             <tbody>
               {filteredItems.map((item) => {
-                const remaining = Number(item.total_expense) - Number(item.advance_paid);
+                const total = effectiveTotal(item);
+                const remaining = total - Number(item.advance_paid);
                 const expected = moneyOrNull(item.expected_budget);
-                const diff = expected == null ? null : Number(item.total_expense) - expected;
+                const diff = expected == null ? null : total - expected;
                 const pax = moneyOrNull(item.pax_count);
                 const perPax = moneyOrNull(item.price_per_pax);
+                const totalFromPax = derivedTotal(pax, perPax) != null;
                 const categoryOptions = (categories.includes(item.category) ? categories : [item.category, ...categories])
                   .map((name) => ({ value: name, label: name }));
                 const cell = (field: EditableField) => ({
@@ -870,7 +925,13 @@ export default function BudgetPage() {
                     <ExcelCell align="left" kind="choice" display={<span className="font-medium whitespace-nowrap">{item.category}</span>} options={categoryOptions} {...cell('category')} />
                     <ExcelCell align="left" kind="text" display={item.vendor || blank()} {...cell('vendor')} />
                     <ExcelCell align="right" kind="money" display={expected == null ? blank() : formatLKR(expected)} {...cell('expected_budget')} />
-                    <ExcelCell align="right" kind="money" display={<span className="font-medium whitespace-nowrap">{formatLKR(Number(item.total_expense))}</span>} {...cell('total_expense')} />
+                    {totalFromPax ? (
+                      <td className="sheet-td text-right whitespace-nowrap" title="Pax × price per pax">
+                        <span className="font-medium">{formatLKR(total)}</span>
+                      </td>
+                    ) : (
+                      <ExcelCell align="right" kind="money" display={<span className="font-medium whitespace-nowrap">{formatLKR(total)}</span>} {...cell('total_expense')} />
+                    )}
                     <td className="sheet-td text-right whitespace-nowrap">
                       {diff == null ? (
                         blank()
