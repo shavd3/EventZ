@@ -7,7 +7,7 @@ import {
   Plus, Trash2, Edit2, X, Check, Search, Send, Phone,
   ChevronsUpDown, ChevronUp, ChevronDown, Copy, Link2,
 } from 'lucide-react';
-import { inviteUrl, generateInviteToken, guestDisplayName, buildInviteShareMessage } from '@/lib/invite';
+import { inviteUrl, generateInviteToken, guestDisplayName, buildInviteShareMessage, NEW_LINK_RSVP_DEADLINE } from '@/lib/invite';
 import Dropdown from '@/components/Dropdown';
 import Select, { StylesConfig, SingleValue, components, DropdownIndicatorProps } from 'react-select';
 
@@ -245,7 +245,7 @@ export default function GuestListPage({ variant }: { variant: 'church' | 'cinnam
       for (let attempt = 0; ; attempt++) {
         const { error } = await supabase
           .from(table)
-          .insert({ ...row, invite_token: generateInviteToken() });
+          .insert({ ...row, invite_token: generateInviteToken(), rsvp_deadline: NEW_LINK_RSVP_DEADLINE });
         if (!error) break;
         if (error.code !== '23505' || attempt >= 2) {
           alert(`Unable to add guest: ${error.message}`);
@@ -299,7 +299,7 @@ export default function GuestListPage({ variant }: { variant: 'church' | 'cinnam
     for (let attempt = 0; ; attempt++) {
       const { error } = await supabase
         .from(table)
-        .update({ invite_token: generateInviteToken() })
+        .update({ invite_token: generateInviteToken(), rsvp_deadline: NEW_LINK_RSVP_DEADLINE })
         .eq('id', item.id);
       if (!error) break;
       if (error.code !== '23505' || attempt >= 2) {
@@ -315,7 +315,8 @@ export default function GuestListPage({ variant }: { variant: 'church' | 'cinnam
     if (!url) return;
     const message = buildInviteShareMessage(
       guestDisplayName(item.first_name, item.last_name),
-      url
+      url,
+      item.rsvp_deadline,
     );
     await navigator.clipboard.writeText(message);
     setCopiedId(item.id);

@@ -47,8 +47,23 @@ export function inviteUrl(firstName: string, lastName: string, token: string | n
   return `${base}/${inviteSlug(firstName, lastName, token)}`;
 }
 
+/**
+ * Stamped onto invite links created from now on. Rows with no deadline keep
+ * 20 September — the date already printed on invitations that were sent.
+ * Keep in step with `NEW_LINK_RSVP_DEADLINE` in wedding-invite/src/lib/guest.ts.
+ */
+export const NEW_LINK_RSVP_DEADLINE = '2026-10-01';
+
+function rsvpSharePhrase(stored: string | null | undefined): string {
+  return stored?.slice(0, 10) === NEW_LINK_RSVP_DEADLINE ? '1st of October' : '20th of September';
+}
+
 /** WhatsApp-ready invite text — keep in step with wedding-invite/src/lib/constants.ts. */
-export function buildInviteShareMessage(guestName: string, inviteUrl: string): string {
+export function buildInviteShareMessage(
+  guestName: string,
+  inviteUrl: string,
+  rsvpDeadline?: string | null,
+): string {
   return [
     'On behalf of our parents,',
     `Dear ${guestName} ❤️`,
@@ -58,7 +73,7 @@ export function buildInviteShareMessage(guestName: string, inviteUrl: string): s
     'Please click on the link to view the invitation and submit your response.',
     inviteUrl,
     '',
-    'Kindly favour us with your response by the 20th of September✨',
+    `Kindly favour us with your response by the ${rsvpSharePhrase(rsvpDeadline)}✨`,
   ].join('\n');
 }
 

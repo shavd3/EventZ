@@ -80,6 +80,11 @@ export interface GuestItem {
   confirmed_count: number | null;
   /** Set by supabase-invite.sql; drives the personal link the invitation site serves. */
   invite_token: string | null;
+  /**
+   * ISO date for links created after the deadline moved to 1 October.
+   * Null (and absent on the Cinnamon Grand table) keeps 20 September.
+   */
+  rsvp_deadline?: string | null;
   address: string;
   gifted_amount: number;
   created_at: string;
