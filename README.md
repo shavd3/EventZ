@@ -20,7 +20,7 @@ A full-stack web application for planning and coordinating events end-to-end —
 | Module | Description |
 |---|---|
 | **Calendar** | October 2026 month view — planned events with a time and description on each day |
-| **Schedule** | Day-of schedule builder with time slots |
+| **Wedding Day** | Frames the shared wedding-day agenda page, with an open-in-tab fallback |
 | **Tasks** | Task list with assignments and completion tracking |
 | **Assignments** | Delegate responsibilities to team members |
 | **Budget** | Expense tracking and budget overview |
@@ -86,7 +86,7 @@ ADMIN_PASSWORD=choose_a_strong_password
 src/
 ├── app/
 │   ├── timeline/          # October planning calendar
-│   ├── schedule/          # Day-of schedule
+│   ├── schedule/          # Wedding Day: the shared agenda, framed
 │   ├── tasks/             # Task management
 │   ├── assignments/       # Role assignments
 │   ├── budget/            # Budget tracker
