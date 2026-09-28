@@ -9,7 +9,7 @@ import { Menu, X, LogOut } from 'lucide-react';
 const navLinks = [
   { href: '/', label: 'Dashboard' },
   { href: '/tasks', label: 'Tasks' },
-  { href: '/timeline', label: 'Timeline' },
+  { href: '/timeline', label: 'Calendar' },
   { href: '/schedule', label: 'Wedding Day' },
   { href: '/budget', label: 'Budget' },
   { href: '/church-guests', label: 'Church Guests' },

@@ -12,12 +12,25 @@ export interface Task {
   created_at: string;
 }
 
+/** Legacy seed table from supabase-schema.sql; nothing in the app reads it. */
 export interface TimelineMilestone {
   id: string;
   title: string;
   description: string;
   target_date: string;
   is_completed: boolean;
+  created_at: string;
+}
+
+/** A planned event on the October calendar (supabase-calendar.sql). Separate from tasks. */
+export interface CalendarEvent {
+  id: string;
+  /** ISO date, YYYY-MM-DD. */
+  event_date: string;
+  /** Postgres time — read back as HH:MM:SS; null when no time was set. */
+  event_time: string | null;
+  title: string;
+  description: string;
   created_at: string;
 }
 

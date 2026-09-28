@@ -24,6 +24,12 @@ function formatLKR(amount: number) {
   return 'Rs. ' + amount.toLocaleString('en-LK', { minimumFractionDigits: 2 });
 }
 
+/** "2026-10-03" → "Sat 3 Oct", built from parts so the timezone can't shift the day. */
+function formatShortDate(key: string) {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
 export default function Dashboard() {
   const [mounted, setMounted] = useState(false);
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
@@ -32,8 +38,8 @@ export default function Dashboard() {
     doneTasks: 0,
     totalBudget: 0,
     totalPaid: 0,
-    milestonesTotal: 0,
-    milestonesDone: 0,
+    calendarTotal: 0,
+    calendarNext: '',
     churchGuests: 0,
     churchConfirmed: 0,
     cinnamonGuests: 0,
@@ -49,18 +55,29 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function fetchStats() {
-      const [tasks, budget, churchGuests, cinnamonGuests] = await Promise.all([
-        supabase.from('tasks').select('status, due_date'),
+      const [tasks, budget, churchGuests, cinnamonGuests, calendar] = await Promise.all([
+        supabase.from('tasks').select('status'),
         supabase.from('budget_items').select('total_expense, advance_paid, status'),
         supabase.from('guest_items').select('count, rsvp_status, confirmed_count'),
         supabase.from('cinnamon_grand_guests').select('count, rsvp_status'),
+        // Until supabase-calendar.sql has been run this errors and yields data: null → 0 events.
+        supabase
+          .from('calendar_events')
+          .select('event_date, event_time, title')
+          .gte('event_date', '2026-10-01')
+          .lte('event_date', '2026-10-31')
+          .order('event_date', { ascending: true })
+          .order('event_time', { ascending: true, nullsFirst: false }),
       ]);
 
       const taskData = tasks.data || [];
       const budgetData = budget.data || [];
       const churchData = churchGuests.data || [];
       const cinnamonData = cinnamonGuests.data || [];
-      const withDueDate = taskData.filter((t) => t.due_date);
+      const calendarData = calendar.data || [];
+      const now = new Date();
+      const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const nextEvent = calendarData.find((e) => e.event_date >= todayKey);
 
       setStats({
         totalTasks: taskData.length,
@@ -70,8 +87,8 @@ export default function Dashboard() {
           if (b.status === 'settled') return sum + Number(b.total_expense);
           return sum + Number(b.advance_paid);
         }, 0),
-        milestonesTotal: withDueDate.length,
-        milestonesDone: withDueDate.filter((t) => t.status === 'done').length,
+        calendarTotal: calendarData.length,
+        calendarNext: nextEvent ? `${formatShortDate(nextEvent.event_date)} · ${nextEvent.title}` : '',
         churchGuests: churchData.reduce((sum, g) => sum + Number(g.count), 0),
         churchConfirmed: churchData
           .filter((g) => g.rsvp_status === 'confirmed')
@@ -87,7 +104,6 @@ export default function Dashboard() {
   }, []);
 
   const taskPercent = stats.totalTasks > 0 ? Math.round((stats.doneTasks / stats.totalTasks) * 100) : 0;
-  const milestonePercent = stats.milestonesTotal > 0 ? Math.round((stats.milestonesDone / stats.milestonesTotal) * 100) : 0;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -147,13 +163,15 @@ export default function Dashboard() {
             <div className="p-2 bg-gold/10 rounded-lg">
               <Calendar size={20} className="text-gold" />
             </div>
-            <h3 className="text-sm font-medium text-warm-gray">Timeline</h3>
+            <h3 className="text-sm font-medium text-warm-gray">Calendar</h3>
           </div>
-          <p className="text-2xl font-bold text-gold">{stats.milestonesDone}/{stats.milestonesTotal}</p>
-          <div className="mt-2 h-2 bg-ivory-dark rounded-full overflow-hidden">
-            <div className="h-full bg-sage rounded-full transition-all" style={{ width: `${milestonePercent}%` }} />
-          </div>
-          <p className="text-xs text-warm-gray-light mt-1">{milestonePercent}% complete</p>
+          <p className="text-2xl font-bold text-gold">{stats.calendarTotal}</p>
+          <p className="text-xs text-warm-gray-light mt-2">
+            {stats.calendarTotal === 1 ? 'event' : 'events'} planned in October
+          </p>
+          <p className="text-xs text-warm-gray mt-1 truncate">
+            {stats.calendarNext ? `Next: ${stats.calendarNext}` : 'Nothing coming up'}
+          </p>
         </Link>
 
         <Link href="/budget" className="card hover:shadow-md transition-shadow group">

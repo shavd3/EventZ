@@ -28,6 +28,15 @@ const emptyForm: TaskForm = {
   price: '',
 };
 
+// Done tasks stay out of the way: the list opens on "To do" and shows the rest only on request.
+type TaskFilter = 'open' | 'done' | 'all';
+const FILTERS: { value: TaskFilter; label: string }[] = [
+  { value: 'open', label: 'To do' },
+  { value: 'done', label: 'Done' },
+  { value: 'all', label: 'All' },
+];
+const UNDO_MS = 6000;
+
 function formatLKR(amount: number) {
   if (!amount) return '';
   return 'Rs. ' + amount.toLocaleString('en-LK', { minimumFractionDigits: 2 });
@@ -42,6 +51,9 @@ export default function TasksPage() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<TaskFilter>('open');
+  // Ticking a task hides it straight away under the default filter, so offer a way back.
+  const [undo, setUndo] = useState<{ task: Task; status: Task['status'] } | null>(null);
 
   async function fetchCategories() {
     const { data } = await supabase
@@ -68,6 +80,13 @@ export default function TasksPage() {
     });
     fetchTasks();
   }, []);
+
+  // The toast dismisses itself; a newer toast restarts the clock.
+  useEffect(() => {
+    if (!undo) return;
+    const timer = setTimeout(() => setUndo(null), UNDO_MS);
+    return () => clearTimeout(timer);
+  }, [undo]);
 
   async function saveTask(e: React.FormEvent) {
     e.preventDefault();
@@ -115,6 +134,19 @@ export default function TasksPage() {
   async function toggleStatus(task: Task) {
     const newStatus = task.status === 'done' ? 'pending' : 'done';
     await supabase.from('tasks').update({ status: newStatus }).eq('id', task.id);
+    // Under "All" the task stays in view, so nothing needs undoing from a toast.
+    if (filter !== 'all') setUndo({ task, status: newStatus });
+    fetchTasks();
+  }
+
+  async function undoToggle() {
+    if (!undo) return;
+    const { task, status } = undo;
+    setUndo(null);
+    await supabase
+      .from('tasks')
+      .update({ status: status === 'done' ? 'pending' : 'done' })
+      .eq('id', task.id);
     fetchTasks();
   }
 
@@ -123,6 +155,9 @@ export default function TasksPage() {
     await supabase.from('tasks').delete().eq('id', id);
     fetchTasks();
   }
+
+  const matchesFilter = (task: Task) =>
+    filter === 'all' || (filter === 'done' ? task.status === 'done' : task.status !== 'done');
 
   const grouped = categories.reduce((acc, cat) => {
     const catTasks = tasks.filter((t) => t.category === cat);
@@ -135,6 +170,9 @@ export default function TasksPage() {
 
   const totalTasks = tasks.length;
   const doneTasks = tasks.filter((t) => t.status === 'done').length;
+  const visibleTasks = tasks.filter(matchesFilter).length;
+  const countFor = (f: TaskFilter) =>
+    f === 'all' ? totalTasks : f === 'done' ? doneTasks : totalTasks - doneTasks;
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -273,6 +311,33 @@ export default function TasksPage() {
         </form>
       )}
 
+      {/* Filter: completed tasks are hidden unless asked for */}
+      {!loading && totalTasks > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          {FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              aria-pressed={filter === f.value}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                filter === f.value
+                  ? 'bg-gold text-white'
+                  : 'bg-white text-warm-gray border border-ivory-dark hover:border-gold'
+              }`}
+              onClick={() => setFilter(f.value)}
+            >
+              {f.label}
+              <span className={`ml-1.5 ${filter === f.value ? 'text-white/80' : 'text-warm-gray-light'}`}>
+                {countFor(f.value)}
+              </span>
+            </button>
+          ))}
+          {filter === 'open' && doneTasks > 0 && (
+            <span className="text-xs text-warm-gray-light ml-1">{doneTasks} completed hidden</span>
+          )}
+        </div>
+      )}
+
       {/* Task Categories */}
       {loading ? (
         <div className="text-center py-12 text-warm-gray-light">Loading tasks...</div>
@@ -281,8 +346,24 @@ export default function TasksPage() {
           <p className="text-lg mb-2">No tasks yet</p>
           <p className="text-sm">Click &quot;Add Task&quot; to get started!</p>
         </div>
+      ) : visibleTasks === 0 ? (
+        <div className="text-center py-12 text-warm-gray-light">
+          <p className="text-lg mb-2">{filter === 'open' ? 'All caught up!' : 'Nothing completed yet'}</p>
+          <p className="text-sm">
+            {filter === 'open' ? 'Every task is ticked off.' : 'Tick a task and it will show up here.'}
+          </p>
+          <button
+            type="button"
+            className="btn-outline mt-4"
+            onClick={() => setFilter(filter === 'open' ? 'done' : 'open')}
+          >
+            {filter === 'open' ? 'Show completed' : 'Show to-do list'}
+          </button>
+        </div>
       ) : (
         Object.entries(grouped).map(([category, catTasks]) => {
+          const shown = catTasks.filter(matchesFilter);
+          if (shown.length === 0) return null;
           const isCollapsed = collapsed[category];
           const doneCount = catTasks.filter((t) => t.status === 'done').length;
           return (
@@ -306,7 +387,7 @@ export default function TasksPage() {
 
               {!isCollapsed && (
                 <div className="mt-3 space-y-2">
-                  {catTasks.map((task) => {
+                  {shown.map((task) => {
                     const isExpanded = expanded[task.id];
                     const hasDetails = task.vendor || task.contact || task.price > 0 || task.notes;
                     return (
@@ -322,6 +403,7 @@ export default function TasksPage() {
                         <div className="flex items-start gap-3 p-3">
                           <button
                             onClick={() => toggleStatus(task)}
+                            aria-label={task.status === 'done' ? 'Mark as to do' : 'Mark as done'}
                             className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
                               task.status === 'done'
                                 ? 'bg-gold border-gold text-white'
@@ -416,6 +498,33 @@ export default function TasksPage() {
             </div>
           );
         })
+      )}
+
+      {/* Undo toast: the ticked task just left the list */}
+      {undo && (
+        <div
+          role="status"
+          className="fixed bottom-5 left-1/2 z-40 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-full bg-[#3d3530] py-2 pl-4 pr-2 text-sm text-white shadow-lg"
+        >
+          <span className="truncate">
+            &ldquo;{undo.task.title}&rdquo; {undo.status === 'done' ? 'marked done' : 'moved back to To do'}
+          </span>
+          <button
+            type="button"
+            onClick={undoToggle}
+            className="shrink-0 rounded-full px-3 py-1 text-xs font-semibold text-gold-light hover:bg-white/10"
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            onClick={() => setUndo(null)}
+            aria-label="Dismiss"
+            className="shrink-0 p-1 text-white/70 hover:text-white"
+          >
+            <X size={14} />
+          </button>
+        </div>
       )}
     </div>
   );

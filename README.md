@@ -19,7 +19,7 @@ A full-stack web application for planning and coordinating events end-to-end —
 
 | Module | Description |
 |---|---|
-| **Timeline** | Visual event timeline with milestone tracking |
+| **Calendar** | October 2026 month view — planned events with a time and description on each day |
 | **Schedule** | Day-of schedule builder with time slots |
 | **Tasks** | Task list with assignments and completion tracking |
 | **Assignments** | Delegate responsibilities to team members |
@@ -85,7 +85,7 @@ ADMIN_PASSWORD=choose_a_strong_password
 ```
 src/
 ├── app/
-│   ├── timeline/          # Event timeline view
+│   ├── timeline/          # October planning calendar
 │   ├── schedule/          # Day-of schedule
 │   ├── tasks/             # Task management
 │   ├── assignments/       # Role assignments
