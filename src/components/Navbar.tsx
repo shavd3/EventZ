@@ -27,8 +27,8 @@ export default function Navbar() {
     window.location.href = '/login';
   }
 
-  // The login page is the one screen that renders without the nav.
-  if (pathname === '/login') return null;
+  // Login and the vendor agenda link render without the nav (vendors must not see the planner).
+  if (pathname === '/login' || pathname.startsWith('/agenda/')) return null;
 
   return (
     <nav className="bg-white border-b border-ivory-dark sticky top-0 z-50">

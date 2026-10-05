@@ -34,7 +34,7 @@ export interface CalendarEvent {
   created_at: string;
 }
 
-/** Legacy: the Wedding Day page stopped reading schedule_items on 2026-09-28 (it frames the shared agenda page). */
+/** Legacy: nothing reads schedule_items. The Wedding Day page uses agenda_items (src/lib/agenda.ts). */
 export interface ScheduleItem {
   id: string;
   time: string;

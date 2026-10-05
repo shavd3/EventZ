@@ -72,7 +72,7 @@ input, select, textarea {
   font-family: var(--font-body);
 }
 
-input[type="text"], input[type="number"], input[type="date"], input[type="time"], input[type="tel"],
+input[type="text"], input[type="number"], input[type="date"], input[type="time"], input[type="tel"], input[type="url"],
 select, textarea {
   width: 100%;
   padding: 0.5rem 0.75rem;
@@ -290,4 +290,20 @@ textarea {
 .cal-sheet textarea {
   padding: 0.625rem 0.75rem;
   font-size: 1rem;
+}
+
+/* Agenda editor sheet: 16px inputs on phones so iOS doesn't zoom on focus. */
+.agenda-modal input,
+.agenda-modal textarea {
+  min-width: 0;
+  font-size: 1rem;
+  padding: 0.625rem 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .agenda-modal input,
+  .agenda-modal textarea {
+    font-size: 0.875rem;
+    padding: 0.5rem 0.75rem;
+  }
 }

@@ -22,5 +22,6 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!login|api/login|_next/static|_next/image|favicon.ico|logo.png).*)'],
+  // agenda/ is the read-only vendor link; its page checks the secret key itself.
+  matcher: ['/((?!login|api/login|agenda/|_next/static|_next/image|favicon.ico|logo.png).*)'],
 };
