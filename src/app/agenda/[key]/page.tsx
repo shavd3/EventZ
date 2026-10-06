@@ -2,7 +2,9 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import AgendaView from '@/components/agenda/AgendaView';
-import { loadAgenda } from '@/lib/agenda-server';
+import VendorsPanel from '@/components/agenda/VendorsPanel';
+import WeddingDayTabs from '@/components/agenda/WeddingDayTabs';
+import { loadAgenda, loadVendors } from '@/lib/agenda-server';
 import { agendaKeyMatches } from '@/lib/auth';
 
 // The read-only vendor link. src/proxy.ts lets /agenda/* through without a planner session;
@@ -19,7 +21,7 @@ export default async function VendorAgendaPage({ params }: { params: Promise<{ k
   const { key } = await params;
   if (!agendaKeyMatches(key)) notFound();
 
-  const { items, error } = await loadAgenda();
+  const [{ items, error }, { vendors }] = await Promise.all([loadAgenda(), loadVendors()]);
 
   return (
     <div className="mx-auto max-w-2xl px-4 pb-8 pt-6">
@@ -38,6 +40,8 @@ export default async function VendorAgendaPage({ params }: { params: Promise<{ k
         <p className="rounded-xl border border-ivory-dark bg-white px-4 py-6 text-center text-sm text-warm-gray">
           The agenda isn&apos;t available right now. Please check back shortly.
         </p>
+      ) : vendors.length > 0 ? (
+        <WeddingDayTabs agenda={<AgendaView items={items} />} vendors={<VendorsPanel vendors={vendors} />} vendorCount={vendors.length} />
       ) : (
         <AgendaView items={items} />
       )}

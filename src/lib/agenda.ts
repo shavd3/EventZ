@@ -96,3 +96,23 @@ export const VEHICLE_STYLES = [
 export function isMissingTable(error: { code?: string; message: string }): boolean {
   return error.code === 'PGRST205' || /schema cache|does not exist/i.test(error.message);
 }
+
+/** A wedding-day vendor contact (supabase-vendors.sql). */
+export interface Vendor {
+  id: string;
+  section: string;
+  role: string;
+  name: string;
+  contact_person: string;
+  phone: string;
+  location_url: string;
+  notes: string;
+  sort_order: number;
+  created_at: string;
+}
+
+export type VendorLoad = { vendors: Vendor[]; error: null } | { vendors: []; error: 'missing' | string };
+
+export function sortVendors(vendors: Vendor[]): Vendor[] {
+  return [...vendors].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
+}

@@ -3,8 +3,11 @@
 import { useState } from 'react';
 import { Check, ExternalLink, Plus, Share2, Trash2, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { AgendaItem, AgendaLoad, isMissingTable, sortAgenda, vehiclesOf } from '@/lib/agenda';
+import { AgendaItem, AgendaLoad, Vendor, VendorLoad, isMissingTable, sortAgenda, sortVendors, vehiclesOf } from '@/lib/agenda';
 import AgendaView from './AgendaView';
+import VendorEditor from './VendorEditor';
+import VendorsPanel from './VendorsPanel';
+import WeddingDayTabs from './WeddingDayTabs';
 
 type FormValues = {
   kind: 'step' | 'block';
@@ -41,7 +44,19 @@ function toForm(item: AgendaItem): FormValues {
 
 type Editor = { mode: 'add' } | { mode: 'edit'; item: AgendaItem };
 
-export default function AgendaAdmin({ initial, sharePath }: { initial: AgendaLoad; sharePath: string | null }) {
+export default function AgendaAdmin({
+  initial,
+  initialVendors,
+  sharePath,
+}: {
+  initial: AgendaLoad;
+  initialVendors: VendorLoad;
+  sharePath: string | null;
+}) {
+  const [vendors, setVendors] = useState<Vendor[]>(initialVendors.vendors);
+  const [vendorError, setVendorError] = useState(initialVendors.error);
+  // undefined = closed, null = adding, Vendor = editing
+  const [vendorEditing, setVendorEditing] = useState<Vendor | null | undefined>(undefined);
   const [items, setItems] = useState<AgendaItem[]>(initial.items);
   const [loadError, setLoadError] = useState(initial.error);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -58,6 +73,16 @@ export default function AgendaAdmin({ initial, sharePath }: { initial: AgendaLoa
     }
     setLoadError(null);
     setItems(sortAgenda(data ?? []));
+  }
+
+  async function refreshVendors() {
+    const { data, error } = await supabase.from('wedding_vendors').select('*');
+    if (error) {
+      setVendorError(isMissingTable(error) ? 'missing' : error.message);
+      return;
+    }
+    setVendorError(null);
+    setVendors(sortVendors(data ?? []));
   }
 
   function openAdd() {
@@ -192,7 +217,41 @@ export default function AgendaAdmin({ initial, sharePath }: { initial: AgendaLoa
           Couldn&apos;t load the agenda: {loadError}
         </div>
       ) : (
-        <AgendaView items={items} onEdit={openEdit} stickyTop="top-16" />
+        <WeddingDayTabs
+          agenda={<AgendaView items={items} onEdit={openEdit} stickyTop="top-16" />}
+          vendorCount={vendors.length}
+          vendors={
+            vendorError === 'missing' ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <p className="font-semibold">The vendors table hasn&apos;t been created yet.</p>
+                <p className="mt-1">
+                  Run <code className="rounded bg-white/70 px-1 py-0.5 font-mono text-xs">supabase-vendors.sql</code> in the
+                  Supabase SQL Editor (it fills in the vendor list), then reload this page.
+                </p>
+              </div>
+            ) : vendorError ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                Couldn&apos;t load vendors: {vendorError}
+              </div>
+            ) : (
+              <VendorsPanel vendors={vendors} onEdit={(v) => setVendorEditing(v)} onAdd={() => setVendorEditing(null)} />
+            )
+          }
+        />
+      )}
+
+      {vendorEditing !== undefined && (
+        <VendorEditor
+          key={vendorEditing?.id ?? 'new'}
+          vendor={vendorEditing}
+          sections={[...new Set(vendors.map((v) => v.section).filter(Boolean))]}
+          nextOrder={vendors.reduce((max, v) => Math.max(max, v.sort_order), 0) + 10}
+          onClose={() => setVendorEditing(undefined)}
+          onSaved={() => {
+            setVendorEditing(undefined);
+            refreshVendors();
+          }}
+        />
       )}
 
       {editor && (
