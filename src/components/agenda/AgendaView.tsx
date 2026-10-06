@@ -1,10 +1,13 @@
 'use client';
 
 import { useMemo, useState, useSyncExternalStore } from 'react';
-import { Car, Clock, MapPin, Pencil, Phone, StickyNote, User } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Car, Clock, MapPin, Pencil, Phone, Printer, StickyNote, User } from 'lucide-react';
+import AgendaPrint from './AgendaPrint';
 import {
   AgendaItem,
   VEHICLE_STYLES,
+  Vendor,
   WEDDING_DATE,
   clockParts,
   contactParts,
@@ -25,6 +28,12 @@ function subscribeMinute(onChange: () => void) {
   const id = setInterval(onChange, 30_000);
   return () => clearInterval(id);
 }
+const subscribeNever = () => () => {};
+/** False during server render and hydration, true after — the print portal needs document.body. */
+function useMounted(): boolean {
+  return useSyncExternalStore(subscribeNever, () => true, () => false);
+}
+
 function useWeddingDayNow(): number | null {
   const snap = useSyncExternalStore(subscribeMinute, nowSnapshot, () => '');
   return snap === '' ? null : Number(snap);
@@ -36,16 +45,20 @@ function useWeddingDayNow(): number | null {
  */
 export default function AgendaView({
   items,
+  vendors = [],
   onEdit,
   stickyTop = 'top-0',
 }: {
   items: AgendaItem[];
+  /** Printed on the last page when no vehicle filter is active. */
+  vendors?: Vendor[];
   onEdit?: (item: AgendaItem) => void;
   /** Tailwind top-* class for the sticky filter bar (below the planner navbar: top-16). */
   stickyTop?: string;
 }) {
   const [vehicle, setVehicle] = useState<string | null>(null);
   const now = useWeddingDayNow();
+  const mounted = useMounted();
 
   const sorted = useMemo(() => sortAgenda(items), [items]);
   const vehicles = useMemo(() => vehiclesOf(items), [items]);
@@ -61,10 +74,20 @@ export default function AgendaView({
 
   return (
     <div>
+      {mounted && createPortal(<AgendaPrint items={shown} vendors={vendors} vehicle={active} />, document.body)}
       {vehicles.length > 0 && (
         <div className={`sticky ${stickyTop} z-30 -mx-4 mb-4 border-b border-ivory-dark bg-ivory/95 px-4 py-3 backdrop-blur`}>
-          <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-warm-gray-light">
-            <Car size={12} /> Filter by vehicle
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-warm-gray-light">
+              <Car size={12} /> Filter by vehicle
+            </span>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="-my-1 flex items-center gap-1.5 rounded-full border border-ivory-dark bg-white px-3 py-1 text-xs font-medium text-warm-gray hover:border-gold hover:text-gold"
+            >
+              <Printer size={13} /> {active ? 'Print run sheet' : 'Print'}
+            </button>
           </div>
           <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none] md:mx-0 md:flex-wrap md:overflow-visible md:px-0">
             <FilterButton label="Everything" count={sorted.length} on={active === null} onClick={() => setVehicle(null)} />

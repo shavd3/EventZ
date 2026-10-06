@@ -41,7 +41,7 @@ export default async function VendorAgendaPage({ params }: { params: Promise<{ k
           The agenda isn&apos;t available right now. Please check back shortly.
         </p>
       ) : vendors.length > 0 ? (
-        <WeddingDayTabs agenda={<AgendaView items={items} />} vendors={<VendorsPanel vendors={vendors} />} vendorCount={vendors.length} />
+        <WeddingDayTabs agenda={<AgendaView items={items} vendors={vendors} />} vendors={<VendorsPanel vendors={vendors} />} vendorCount={vendors.length} />
       ) : (
         <AgendaView items={items} />
       )}

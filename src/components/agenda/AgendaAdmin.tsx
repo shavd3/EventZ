@@ -218,7 +218,7 @@ export default function AgendaAdmin({
         </div>
       ) : (
         <WeddingDayTabs
-          agenda={<AgendaView items={items} onEdit={openEdit} stickyTop="top-16" />}
+          agenda={<AgendaView items={items} vendors={vendors} onEdit={openEdit} stickyTop="top-16" />}
           vendorCount={vendors.length}
           vendors={
             vendorError === 'missing' ? (
